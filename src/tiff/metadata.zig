@@ -10,12 +10,11 @@ const c = @cImport({
 });
 
 pub const C = c;
-pub const TIFF = c.TIFF;
 
 const MetadataType = union(enum) {
     OME: OMETIFFMetadata,
 
-    fn addBlock(self: MetadataType, tif: *TIFF) !void {
+    fn addBlock(self: MetadataType, tif: *c.TIFF) !void {
         return switch (self) {
             .OME => |m| m.addBlock(tif),
         };
@@ -24,7 +23,7 @@ const MetadataType = union(enum) {
 
 pub const TIFFMetadata = @This();
 
-tif: *TIFF,
+tif: *c.TIFF,
 typ: i32,
 size: Size3(i32),
 blocksize: Size3(i32),
@@ -55,21 +54,24 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         var n_dirs: c_int = c.TIFFNumberOfDirectories(tiff);
         var size_dirs = @intCast(usize, n_dirs);
         std.debug.print("found {d} IFDs in tiff file\n", .{size_dirs});
-        var dirs = try std.ArrayList(TIFFDirectoryData).initCapacity(allocator, size_dirs);
+        var dirs_array = try std.ArrayList(TIFFDirectoryData).initCapacity(allocator, size_dirs);
 
         var dir_no: usize = 0;
         while (true) : (dir_no += 1) {
             std.debug.print("reading IFD no {d}\n", .{dir_no});
             if (c.TIFFReadDirectory(tiff) == 0) break;
             var dir = TIFFDirectoryData.init(tiff);
-            try dirs.append(dir);
+            try dirs_array.append(dir);
         }
 
         // reset directory index
         _ = c.TIFFSetDirectory(tiff, 0);
 
+        var dirs = dirs_array.toOwnedSlice();
+        std.debug.print("found dirs: {any}\n", .{dirs});
+
         // try OME
-        if (OMETIFFMetadata.init(dirs.toOwnedSlice())) |m| {
+        if (OMETIFFMetadata.init(&self, dirs)) |m| {
             std.debug.print("tiff file is OME-Tiff\n", .{});
             self.metadataType = MetadataType{ .OME = m };
         }

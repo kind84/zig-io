@@ -1,14 +1,13 @@
 const std = @import("std");
 const Size3 = @import("../core/size3.zig").Size3;
 const c = @import("metadata.zig").C;
-const TIFF = @import("metadata.zig").TIFF;
 // const c = @cImport({
 //     @cInclude("tiff.h");
 //     @cInclude("tiffio.h");
 // });
 
 pub const TIFFBlockInfo = struct {
-    tif: *TIFF,
+    tif: *c.TIFF,
     dir: i32,
     block: i32,
 };
@@ -29,7 +28,7 @@ pub const TIFFDirectoryData = struct {
     yresolution: f64,
     description: []const u8,
 
-    pub fn init(tif: *TIFF) TIFFDirectoryData {
+    pub fn init(tif: *c.TIFF) TIFFDirectoryData {
         var tdd = TIFFDirectoryData{
             .format = 0,
             .nbits = 0,
@@ -49,6 +48,8 @@ pub const TIFFDirectoryData = struct {
 
         if (c.TIFFGetField(tif, c.TIFFTAG_SUBFILETYPE, &tdd.subFileType) == 0) {
             std.debug.print("found full resolution IFD\n", .{});
+
+            // TODO: is this valid?
             tdd.subFileType = 0; // i.e. full-resolution image data
         }
 
@@ -89,7 +90,7 @@ pub const TIFFDirectoryData = struct {
         _ = c.TIFFGetField(tif, c.TIFFTAG_COMPRESSION, &tdd.compression);
 
         // Get the resolution
-        var res: f32 = undefined;
+        var res: f32 = 0;
         if (c.TIFFGetField(tif, c.TIFFTAG_XRESOLUTION, &res) == 0) {
             tdd.xresolution = res;
         } else {
@@ -110,7 +111,6 @@ pub const TIFFDirectoryData = struct {
         }
 
         // Get the description
-        // var c_descr: ?[*]const u8 = null;
         var desc: ?[*:0]const u8 = null;
         std.debug.print("reading tiff file description\n", .{});
         if (c.TIFFGetField(tif, c.TIFFTAG_IMAGEDESCRIPTION, &desc) == 0) {
