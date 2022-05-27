@@ -1,15 +1,20 @@
 // courtesy of https://gist.github.com/Snektron/b5ed260962bf9b203cd04aa4175430bf
 
 const std = @import("std");
+const mem = std.mem;
 const testing = std.testing;
+const Allocator = mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
+const SegmentedList = std.SegmentedList;
 
 pub const Attribute = struct { name: []const u8, value: []const u8 };
-const AttributeList = std.TailQueue(*Attribute);
 
 pub const Content = union(enum) { CharData: []const u8, Comment: []const u8, Element: *Element };
-const ContentList = std.TailQueue(Content);
 
 pub const Element = struct {
+    const AttributeList = SegmentedList(*Attribute, 0);
+    const ContentList = SegmentedList(Content, 0);
+
     tag: []const u8,
     attributes: AttributeList,
     children: ContentList,
@@ -22,10 +27,10 @@ pub const Element = struct {
         };
     }
 
-    fn getAttribute(self: *Element, attrib_name: []const u8) ?[]const u8 {
+    pub fn getAttribute(self: *Element, attrib_name: []const u8) ?[]const u8 {
         var it = self.attributes.iterator(0);
         while (it.next()) |child| {
-            if (std.mem.eql(u8, child.*.name, attrib_name)) {
+            if (mem.eql(u8, child.*.name, attrib_name)) {
                 return child.*.value;
             }
         }
@@ -49,21 +54,21 @@ pub const Element = struct {
         return self.findChildrenByTag(tag).next();
     }
 
-    fn findChildrenByTag(self: *Element, tag: []const u8) FindChildrenByTagIterator {
-        return .{ .inner = self.children.first.?, .tag = tag };
+    pub fn findChildrenByTag(self: *Element, tag: []const u8) FindChildrenByTagIterator {
+        return .{ .inner = self.children.iterator(0), .tag = tag };
     }
 
     pub const FindChildrenByTagIterator = struct {
-        inner: *ContentList.Node,
+        inner: ContentList.Iterator,
         tag: []const u8,
 
-        fn next(self: *FindChildrenByTagIterator) ?*Element {
-            while (self.inner.next) |child| {
-                if (child.*.data != .Element or !std.mem.eql(u8, child.*.data.Element.tag, self.tag)) {
+        pub fn next(self: *FindChildrenByTagIterator) ?*Element {
+            while (self.inner.next()) |child| {
+                if (child.* != .Element or !mem.eql(u8, child.*.Element.tag, self.tag)) {
                     continue;
                 }
 
-                return child.*.data.Element;
+                return child.*.Element;
             }
 
             return null;
@@ -74,7 +79,7 @@ pub const Element = struct {
 pub const XmlDecl = struct { version: []const u8, encoding: ?[]const u8, standalone: ?bool };
 
 pub const Document = struct {
-    arena: std.heap.ArenaAllocator,
+    arena: ArenaAllocator,
     xml_decl: ?*XmlDecl,
     root: *Element,
 
@@ -181,11 +186,11 @@ const ParseContext = struct {
 
     fn currentLine(self: ParseContext) []const u8 {
         var begin: usize = 0;
-        if (std.mem.indexOfScalarPos(u8, self.source[0..self.offset], '\n')) |prev_nl| {
+        if (mem.indexOfScalarPos(u8, self.source[0..self.offset], '\n')) |prev_nl| {
             begin = prev_nl + 1;
         }
 
-        var end = std.mem.indexOfScalarPos(u8, self.source, self.offset, '\n') orelse self.source.len;
+        var end = mem.indexOfScalarPos(u8, self.source, self.offset, '\n') orelse self.source.len;
         return self.source[begin..end];
     }
 };
@@ -238,17 +243,19 @@ test "ParseContext" {
 
 pub const ParseError = error{ IllegalCharacter, UnexpectedEof, UnexpectedCharacter, UnclosedValue, UnclosedComment, InvalidName, InvalidEntity, InvalidStandaloneValue, NonMatchingClosingTag, InvalidDocument, OutOfMemory };
 
-pub fn parse(backing_allocator: std.mem.Allocator, source: []const u8) !Document {
+pub fn parse(backing_allocator: Allocator, source: []const u8) !Document {
     var ctx = ParseContext.init(source);
     return try parseDocument(&ctx, backing_allocator);
 }
 
-fn parseDocument(ctx: *ParseContext, backing_allocator: std.mem.Allocator) !Document {
-    var doc = Document{ .arena = std.heap.ArenaAllocator.init(backing_allocator), .xml_decl = null, .root = undefined };
+fn parseDocument(ctx: *ParseContext, backing_allocator: Allocator) !Document {
+    var doc = Document{ .arena = ArenaAllocator.init(backing_allocator), .xml_decl = null, .root = undefined };
 
     errdefer doc.deinit();
 
     doc.xml_decl = try tryParseProlog(ctx, doc.arena.allocator());
+    _ = ctx.eatWs();
+    _ = try tryParseComment(ctx, doc.arena.allocator());
     _ = ctx.eatWs();
     doc.root = (try tryParseElement(ctx, doc.arena.allocator())) orelse return error.InvalidDocument;
     _ = ctx.eatWs();
@@ -258,7 +265,7 @@ fn parseDocument(ctx: *ParseContext, backing_allocator: std.mem.Allocator) !Docu
     return doc;
 }
 
-fn parseAttrValue(ctx: *ParseContext, alloc: std.mem.Allocator) ![]const u8 {
+fn parseAttrValue(ctx: *ParseContext, alloc: Allocator) ![]const u8 {
     const quote = try ctx.consume();
     if (quote != '"' and quote != '\'') return error.UnexpectedCharacter;
 
@@ -274,7 +281,7 @@ fn parseAttrValue(ctx: *ParseContext, alloc: std.mem.Allocator) ![]const u8 {
     return try dupeAndUnescape(alloc, ctx.source[begin..end]);
 }
 
-fn parseEqAttrValue(ctx: *ParseContext, alloc: std.mem.Allocator) ![]const u8 {
+fn parseEqAttrValue(ctx: *ParseContext, alloc: Allocator) ![]const u8 {
     _ = ctx.eatWs();
     try ctx.expect('=');
     _ = ctx.eatWs();
@@ -301,7 +308,7 @@ fn parseNameNoDupe(ctx: *ParseContext) ![]const u8 {
     return ctx.source[begin..end];
 }
 
-fn tryParseCharData(ctx: *ParseContext, alloc: std.mem.Allocator) !?[]const u8 {
+fn tryParseCharData(ctx: *ParseContext, alloc: Allocator) !?[]const u8 {
     const begin = ctx.offset;
 
     while (ctx.peek()) |ch| {
@@ -317,7 +324,7 @@ fn tryParseCharData(ctx: *ParseContext, alloc: std.mem.Allocator) !?[]const u8 {
     return try dupeAndUnescape(alloc, ctx.source[begin..end]);
 }
 
-fn parseContent(ctx: *ParseContext, alloc: std.mem.Allocator) ParseError!Content {
+fn parseContent(ctx: *ParseContext, alloc: Allocator) ParseError!Content {
     if (try tryParseCharData(ctx, alloc)) |cd| {
         return Content{ .CharData = cd };
     } else if (try tryParseComment(ctx, alloc)) |comment| {
@@ -329,7 +336,7 @@ fn parseContent(ctx: *ParseContext, alloc: std.mem.Allocator) ParseError!Content
     }
 }
 
-fn tryParseAttr(ctx: *ParseContext, alloc: std.mem.Allocator) !?*Attribute {
+fn tryParseAttr(ctx: *ParseContext, alloc: Allocator) !?*Attribute {
     const name = parseNameNoDupe(ctx) catch return null;
     _ = ctx.eatWs();
     try ctx.expect('=');
@@ -342,7 +349,7 @@ fn tryParseAttr(ctx: *ParseContext, alloc: std.mem.Allocator) !?*Attribute {
     return attr;
 }
 
-fn tryParseElement(ctx: *ParseContext, alloc: std.mem.Allocator) !?*Element {
+fn tryParseElement(ctx: *ParseContext, alloc: Allocator) !?*Element {
     const start = ctx.offset;
     if (!ctx.eat('<')) return null;
     const tag = parseNameNoDupe(ctx) catch {
@@ -355,7 +362,7 @@ fn tryParseElement(ctx: *ParseContext, alloc: std.mem.Allocator) !?*Element {
 
     while (ctx.eatWs()) {
         const attr = (try tryParseAttr(ctx, alloc)) orelse break;
-        element.attributes.append(&AttributeList.Node{ .data = attr });
+        try element.attributes.append(alloc, attr);
     }
 
     if (ctx.eatStr("/>")) {
@@ -372,7 +379,7 @@ fn tryParseElement(ctx: *ParseContext, alloc: std.mem.Allocator) !?*Element {
         }
 
         const content = try parseContent(ctx, alloc);
-        element.children.append(&ContentList.Node{ .data = content });
+        try element.children.append(alloc, content);
     }
 
     const closing_tag = try parseNameNoDupe(ctx);
@@ -426,9 +433,9 @@ test "tryParseElement" {
     }
 }
 
-fn tryParseProlog(ctx: *ParseContext, alloc: std.mem.Allocator) !?*XmlDecl {
+fn tryParseProlog(ctx: *ParseContext, alloc: Allocator) !?*XmlDecl {
     const start = ctx.offset;
-    if (!ctx.eatStr("<?") or !std.mem.eql(u8, try parseNameNoDupe(ctx), "xml")) {
+    if (!ctx.eatStr("<?") or !mem.eql(u8, try parseNameNoDupe(ctx), "xml")) {
         ctx.offset = start;
         return null;
     }
@@ -493,7 +500,7 @@ test "tryParseProlog" {
     }
 }
 
-fn tryParseComment(ctx: *ParseContext, alloc: std.mem.Allocator) !?[]const u8 {
+fn tryParseComment(ctx: *ParseContext, alloc: Allocator) !?[]const u8 {
     if (!ctx.eatStr("<!--")) return null;
 
     const begin = ctx.offset;
@@ -517,14 +524,14 @@ fn unescapeEntity(text: []const u8) !u8 {
     return error.InvalidEntity;
 }
 
-fn dupeAndUnescape(alloc: std.mem.Allocator, text: []const u8) ![]const u8 {
+fn dupeAndUnescape(alloc: Allocator, text: []const u8) ![]const u8 {
     const str = try alloc.alloc(u8, text.len);
 
     var j: usize = 0;
     var i: usize = 0;
     while (i < text.len) : (j += 1) {
         if (text[i] == '&') {
-            const entity_end = 1 + (std.mem.indexOfScalarPos(u8, text, i, ';') orelse return error.InvalidEntity);
+            const entity_end = 1 + (mem.indexOfScalarPos(u8, text, i, ';') orelse return error.InvalidEntity);
             str[j] = try unescapeEntity(text[i..entity_end]);
             i = entity_end;
         } else {
