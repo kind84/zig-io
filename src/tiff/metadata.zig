@@ -3,7 +3,7 @@ const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
 const OMETIFFMetadata = @import("metadata_ome.zig");
 const GenericTIFFMetadata = @import("metadata_generic.zig");
 const Channel = @import("../core/Channel.zig");
-const ImageFormat = @import("../core/Slide.zig").ImageFormat;
+const ImageFormat = @import("../core/slide.zig").ImageFormat;
 const Size3 = @import("../core/size.zig").Size3;
 const c = @cImport({
     @cInclude("tiffio.h");
@@ -86,12 +86,14 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
                 break :blk MetadataType{ .Generic = m };
             }
 
-            break :blk undefined;
+            // break :blk undefined;
+            return error.NotATIFFSlide;
         };
 
         self.metadataType = metadata;
         self.tif = tiff;
     }
+
     return self;
 }
 
