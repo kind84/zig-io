@@ -39,7 +39,18 @@ pub fn slide(self: *TIFFSlide) Slide {
 }
 
 pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !void {
-    try self.openFromSingleFile(path, allocator);
+    // Check if path is a directory
+    if (std.fs.openDirAbsolute(path, .{})) |dir| {
+        _ = dir;
+
+        // Check if subfolders match channels
+        // TODO
+
+    } else |err| {
+        if (err == std.fs.Dir.OpenError.NotDir) {
+            try self.openFromSingleFile(path, allocator);
+        } else return err;
+    }
 }
 
 fn openFromSingleFile(
@@ -47,8 +58,6 @@ fn openFromSingleFile(
     path: []const u8,
     allocator: std.mem.Allocator,
 ) !void {
-    // path = "/home/paolo/Downloads/image-set-001/TCGA-60.ome.tiff";
-    // path = "/home/paolo/Downloads/pd-l1ktnslcS5.ome.tiff";
     var m = try TIFFMetadata.provide(allocator, path);
     self.metadata = &[_]TIFFMetadata{m};
 
@@ -59,6 +68,5 @@ fn openFromSingleFile(
         // regular grid layout
     }
 
-    // TODO: remove this
-    try m.addBlock();
+    self.blockInfos = try m.addBlock();
 }

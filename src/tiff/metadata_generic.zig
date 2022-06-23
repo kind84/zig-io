@@ -1,6 +1,7 @@
 const std = @import("std");
 const TIFFMetadata = @import("metadata.zig");
 const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
+const TIFFBlockInfo = @import("utils.zig").TIFFBlockInfo;
 const c = @import("metadata.zig").C;
 
 pub const GenericTIFFMetadata = @This();
@@ -16,8 +17,8 @@ pub fn init(
     return GenericTIFFMetadata{};
 }
 
-pub fn addBlock(self: GenericTIFFMetadata, tif: *c.TIFF) !void {
+pub fn addBlock(self: GenericTIFFMetadata) ![]TIFFBlockInfo {
     _ = self;
-    _ = tif;
     std.debug.print("Yay Generic TIFF!\n", .{});
+    return &[_]TIFFBlockInfo{};
 }
