@@ -116,7 +116,6 @@ pub const TIFFDirectoryData = struct {
         var desc: [*:0]const u8 = &[_:0]u8{};
         std.debug.print("reading tiff file description\n", .{});
         if (c.TIFFGetField(tif, c.TIFFTAG_IMAGEDESCRIPTION, &desc) == 1) {
-            std.debug.print("desc: {s}\n", .{desc});
             var description = std.mem.span(desc);
 
             // if kept on the stack, the description gets jammed once the
@@ -126,7 +125,6 @@ pub const TIFFDirectoryData = struct {
             std.mem.copy(u8, heap_description, description);
             tdd.description = heap_description;
         }
-        std.debug.print("reading tiff file description done\n", .{});
 
         return tdd;
     }

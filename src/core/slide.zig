@@ -15,6 +15,7 @@ pub const Slide = struct {
     //     else => unreachable,
     // },
     // metadata: Metadata,
+    imageFormat: ImageFormat,
     typ: i32,
     objective: f64,
     focalPlaneMin: f64,
@@ -35,7 +36,15 @@ pub const Slide = struct {
     else
         *const fn (ptr: *anyopaque, path: []const u8, allocator: std.mem.Allocator) anyerror!void,
 
-    pub fn init(pointer: anytype, comptime openFn: fn (ptr: @TypeOf(pointer), path: []const u8, allocator: std.mem.Allocator) anyerror!void) Slide {
+    pub fn init(
+        pointer: anytype,
+        imageFormat: ImageFormat,
+        comptime openFn: fn (
+            ptr: @TypeOf(pointer),
+            path: []const u8,
+            allocator: std.mem.Allocator,
+        ) anyerror!void,
+    ) Slide {
         const Ptr = @TypeOf(pointer);
         std.debug.assert(@typeInfo(Ptr) == .Pointer); // Must be a pointer
         std.debug.assert(@typeInfo(Ptr).Pointer.size == .One); // Must be a single-item pointer
@@ -49,6 +58,7 @@ pub const Slide = struct {
         };
 
         return .{
+            .imageFormat = imageFormat,
             .typ = undefined,
             .objective = undefined,
             .focalPlaneMin = undefined,
@@ -61,8 +71,43 @@ pub const Slide = struct {
         };
     }
 
-    pub fn open(s: Slide, path: []const u8, allocator: std.mem.Allocator) !void {
-        s.openFn(s.ptr, path, allocator);
+    pub fn open(self: Slide, path: []const u8, allocator: std.mem.Allocator) !void {
+        self.openFn(self.ptr, path, allocator);
+    }
+
+    pub fn depth(self: Slide) i32 {
+        _ = self;
+        // TODO
+        // return CV_MAT_DEPTH(self.typ);
+        return 0;
+    }
+
+    pub fn slices(self: Slide) i32 {
+        _ = self;
+        // TODO
+        // return self.layout.size.depth;
+        return 1;
+    }
+
+    pub fn rows(self: Slide) i32 {
+        _ = self;
+        // TODO
+        // return self.layout.size.height;
+        return 1;
+    }
+
+    pub fn cols(self: Slide) i32 {
+        _ = self;
+        // TODO
+        // return self.layout.size.width;
+        return 1;
+    }
+
+    pub fn isContiguous(self: Slide) bool {
+        _ = self;
+        // TODO
+        // self.layout.isContiguous();
+        return false;
     }
 };
 
