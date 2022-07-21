@@ -1,5 +1,45 @@
 const std = @import("std");
 
+pub fn Rect(comptime Type: type) type {
+    return struct {
+        x: Type, // ┐ top left corner
+        y: Type, // ┘
+        width: Type,
+        height: Type,
+
+        const Self = @This();
+
+        pub fn init(x: Type, y: Type, width: Type, height: Type) Self {
+            return Self{
+                .x = x,
+                .y = y,
+                .width = width,
+                .height = height,
+            };
+        }
+
+        pub fn intersect(a: Self, b: Self) ?Self {
+            var x = std.math.max(a.x, b.x);
+            var y = std.math.max(a.y, b.y);
+            var width = std.math.min(a.x + a.width, b.x + b.width) - x;
+            var height = std.math.min(a.y + a.height, b.y + b.height) - y;
+
+            var region = Self{
+                .x = x,
+                .y = y,
+                .width = if (width <= 0) width else return null,
+                .height = if (height <= 0) height else return null,
+            };
+
+            return region;
+        }
+
+        pub fn volume(self: Self) Type {
+            return self.width * self.height;
+        }
+    };
+}
+
 pub fn Rect3(comptime Type: type) type {
     return struct {
         x: Type, // ┐
@@ -10,6 +50,17 @@ pub fn Rect3(comptime Type: type) type {
         depth: Type,
 
         const Self = @This();
+
+        pub fn init(x: Type, y: Type, z: Type, width: Type, height: Type, depth: Type) Self {
+            return Self{
+                .x = x,
+                .y = y,
+                .z = z,
+                .width = width,
+                .height = height,
+                .depth = depth,
+            };
+        }
 
         pub fn intersect(a: Self, b: Self) ?Self {
             var x = std.math.max(a.x, b.x);

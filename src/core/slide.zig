@@ -1,7 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Channel = @import("./Channel.zig");
+const Rect = @import("rect.zig").Rect;
 const Rect3 = @import("rect.zig").Rect3;
+const Mat = @import("mat.zig").Mat;
 // const Metadata = @import("./metadata.zig").Metadata;
 const TIFFSlide = @import("../tiff/TIFFSlide.zig");
 const TIFFMetadata = @import("../tiff/metadata.zig").TIFFMetadata;
@@ -30,6 +32,8 @@ pub const Slide = struct {
     channelList: []Channel,
 
     RGBABuffer: []u32,
+
+    mat: Mat,
 
     ptr: *anyopaque,
     openFn: if (builtin.zig_backend == .stage1)
@@ -67,6 +71,7 @@ pub const Slide = struct {
             .pixelsize = undefined,
             .channelList = undefined,
             .RGBABuffer = undefined,
+            .mat = undefined,
             .ptr = pointer,
             .openFn = gen.open,
         };
@@ -76,10 +81,9 @@ pub const Slide = struct {
         self.openFn(self.ptr, path, allocator);
     }
 
-    pub fn getRegion(self: Slide, region: Rect3(u32), channel: u32, dst: []u8) !void {
+    pub fn getRegion(self: Slide, region: Rect3(u32), channel: u32, dst: Mat) !void {
         // TODO
         _ = self;
-        _ = region;
         _ = channel;
         _ = dst;
 
@@ -139,15 +143,106 @@ pub const Slide = struct {
         return true;
     }
 
-    fn copyTo(self: Slide, r1: Rect3(u32), r2: Rect3(u32), src: []u8, dst: []u8) !void {
+    fn copyTo(self: Slide, r1: Rect3(u32), r2: Rect3(u32), dst: Mat) !void {
         var intersect = r1.intersect(r2) orelse return error.NoIntersection;
 
-        _ = intersect;
+        var src_rect = Rect(u32).init(
+            intersect.x - r1.x,
+            intersect.y - r1.y,
+            intersect.width,
+            intersect.height,
+        );
+        var dst_rect = Rect(u32).init(
+            intersect.x - r2.x,
+            intersect.y - r2.y,
+            intersect.width,
+            intersect.height,
+        );
+
+        var src_z0 = intersect.z - r1.z;
+        var dst_z0 = intersect.z - r2.z;
+        var height: u32 = undefined;
+        var src_data: [*]u8 = undefined;
+        var dst_data: [*]u8 = undefined;
+        var bytes_in_row = intersect.width * @intCast(u32, self.mat.elemSize());
+
+        if (self.mat.dims == 2 and dst.dims == 2) {
+            std.debug.assert(intersect.depth == 1);
+
+            src_data = self.mat.data + (src_rect.x * self.mat.elemSize()) + (src_rect.y * self.mat.step[0]);
+            dst_data = dst.data + (dst_rect.x * dst.elemSize()) + (dst_rect.y * dst.step[0]);
+
+            height = intersect.height;
+        } else if (self.mat.dims == 2) { // dst.dims != 2
+            std.debug.assert(intersect.depth == 1);
+
+            var src_sub_view: Mat = self.mat.subMat(src_rect);
+
+            var dst_slice = Mat.init(
+                dst.size[1],
+                dst.size[2],
+                dst.typ,
+                dst.data + dst_z0 * dst.step[0],
+                null,
+            );
+            var dst_sub_view: Mat = dst_slice.subMat(dst_rect);
+
+            src_data = src_sub_view.data;
+            dst_data = dst_sub_view.data;
+        } else if (dst.dims == 2) { // self.mat.dims != 2
+            std.debug.assert(intersect.depth == 1);
+
+            var src_slice = Mat.init(
+                self.mat.size[1],
+                self.mat.size[2],
+                self.mat.typ,
+                self.mat.data + src_z0 * self.mat.step[0],
+                null,
+            );
+            var src_sub_view: Mat = src_slice.subMat(src_rect);
+
+            var dst_sub_view: Mat = dst.subMat(dst_rect);
+
+            src_data = src_sub_view.data;
+            dst_data = dst_sub_view.data;
+        } else { // dst.dims == 3 && self.mat.dims == 3
+            var zz: u32 = 0;
+            while (zz < intersect.depth) : (zz += 1) {
+                var src_slice = Mat.init(
+                    self.mat.size[1],
+                    self.mat.size[2],
+                    self.mat.typ,
+                    self.mat.data + (src_z0 + zz) * self.mat.step[0],
+                    null,
+                );
+                var dst_slice = Mat.init(
+                    dst.size[1],
+                    dst.size[2],
+                    dst.typ,
+                    dst.data + (dst_z0 + zz) * dst.step[0],
+                    null,
+                );
+
+                var src_sub_view: Mat = src_slice.subMat(src_rect);
+                var dst_sub_view: Mat = dst_slice.subMat(dst_rect);
+
+                src_data = src_sub_view.data;
+                dst_data = dst_sub_view.data;
+            }
+        }
+
+        var i: u32 = 0;
+        while (i < height) : (i += 1) {
+            // using @memcpy to keep the same style as C++ here
+            // it can be replaced by:
+            // std.mem.copy(u8, dst_data[0..bytes_in_row], src_data[0..bytes_in_row]);
+            @memcpy(dst_data, src_data, bytes_in_row);
+
+            src_data += self.mat.step[0];
+            dst_data += dst.step[0];
+        }
+
         _ = self;
-        _ = r1;
-        _ = r2;
-        _ = src;
-        _ = dst;
     }
 };
 
