@@ -7,24 +7,24 @@ const LayoutError = error{
     OutOfRange,
 };
 
-const LayoutType = union(enum) {
+const LayoutType = enum {
     RegularNoOverlap,
     IrregularNoOverlap,
     RegularOverlap,
     IrregularOverlap,
 };
 
-const Grid = union(enum) {
+const Grid = enum {
     Regular,
     Irregular,
 };
 
-const Placement = union(enum) {
+const Placement = enum {
     Overlap,
     NoOverlap,
 };
 
-const Block = union {
+const Block = union(enum) {
     size: Size3(u32),
     sizes: []Size3(u32),
 };
@@ -330,20 +330,20 @@ test "initRegularNoOverlap" {
     );
     defer layout.deinit();
 
-    std.debug.assert(layout.grid == Grid.Regular);
-    std.debug.assert(layout.placement == Placement.NoOverlap);
-    std.debug.assert(layout.typ == LayoutType.RegularNoOverlap);
-    std.debug.assert(std.meta.eql(layout.size, Size3(u32){ .width = 2048, .height = 2048, .depth = 3 }));
-    std.debug.assert(layout.coords == null);
-    std.debug.assert(std.meta.eql(layout.gridsize, Size3(u32){ .width = 4, .height = 4, .depth = 1 }));
-    std.debug.assert(std.meta.eql(layout.block.size, block_size));
-    std.debug.assert(layout.blocks == undefined);
-    std.debug.assert(layout.channels == channels);
-    std.debug.assert(layout.whc == 48); // 4 * 4 * 3
-    std.debug.assert(layout.wh == 16); // 4 * 4
-    std.debug.assert(@TypeOf(layout.cache) == std.ArrayList(BlockInfo));
-    std.debug.assert(layout.cache.items.len == 0);
-    std.debug.assert(layout.contiguous == false);
+    try std.testing.expect(layout.grid == Grid.Regular);
+    try std.testing.expect(layout.placement == Placement.NoOverlap);
+    try std.testing.expect(layout.typ == LayoutType.RegularNoOverlap);
+    try std.testing.expect(std.meta.eql(layout.size, Size3(u32){ .width = 2048, .height = 2048, .depth = 3 }));
+    try std.testing.expect(layout.coords == null);
+    try std.testing.expect(std.meta.eql(layout.gridsize, Size3(u32){ .width = 4, .height = 4, .depth = 1 }));
+    try std.testing.expect(std.meta.eql(layout.block.size, block_size));
+    try std.testing.expect(layout.blocks == undefined);
+    try std.testing.expect(layout.channels == channels);
+    try std.testing.expect(layout.whc == 48); // 4 * 4 * 3
+    try std.testing.expect(layout.wh == 16); // 4 * 4
+    try std.testing.expect(@TypeOf(layout.cache) == std.ArrayList(BlockInfo));
+    try std.testing.expect(layout.cache.items.len == 0);
+    try std.testing.expect(layout.contiguous == false);
 }
 
 test "getBlockRegularNoOverlap" {

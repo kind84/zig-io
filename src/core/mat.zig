@@ -3,7 +3,7 @@ const Rect = @import("rect.zig").Rect;
 
 pub const Mat = struct {
     typ: MatType,
-    data: [*]u8,
+    data: [*]const u8,
     dims: u8,
     rows: u32,
     cols: u32,
@@ -13,7 +13,7 @@ pub const Mat = struct {
     const auto_step: usize = 0;
 
     // modules/core/src/matrix.cpp L419
-    pub fn init(rows: u32, cols: u32, typ: MatType, data: [*]u8, step: ?usize) !Mat {
+    pub fn init(rows: u32, cols: u32, typ: MatType, data: [*]const u8, step: ?usize) !Mat {
         var stp = step orelse auto_step;
 
         var esz = typ.elemSize();
@@ -41,25 +41,25 @@ pub const Mat = struct {
 
     /// returns a new Mat of the provided roi. The underlying data is not
     /// copied.
-    pub fn subMat(self: Mat, roi: Rect) Mat {
+    pub fn subMat(self: Mat, roi: Rect(u32)) Mat {
         std.debug.assert(self.dims <= 2);
 
         var esz = self.elemSize();
-        var data = self.data + (roi.x * esz);
+        var data = self.data + (roi.y * self.step[0]) + (roi.x * esz);
 
         return Mat{
             .typ = self.typ,
             .data = data,
             .dims = self.dims,
-            .rows = roi.height, // TODO FIXME
-            .cols = roi.width, // TODO FIXME
+            .rows = roi.height,
+            .cols = roi.width,
             .size = &[_]u32{roi.height},
             .step = &[_]usize{ self.step[0], esz },
         };
     }
 
     pub fn size(self: Mat) usize {
-        return @bitSizeOf(self.t);
+        return @bitSizeOf(self.typ);
     }
 
     pub fn elemSize(self: Mat) usize {
@@ -113,6 +113,24 @@ pub const MatType = enum(u8) {
         return self.size() * chans;
     }
 };
+
+test "subMat" {
+    var data = [_]u8{
+        1, 1, 1, 1,
+        2, 2, 2, 2,
+        3, 3, 3, 3,
+        4, 4, 4, 4,
+    };
+    const mat = try Mat.init(4, 4, MatType.CV_8UC1, &data, null);
+
+    const rect = Rect(u32).init(0, 1, 2, 2);
+    const sub = mat.subMat(rect);
+
+    try std.testing.expectEqual(rect.height, sub.rows);
+    try std.testing.expectEqual(rect.width, sub.cols);
+    try std.testing.expectEqual(MatType.CV_8UC1, sub.typ);
+    try std.testing.expectEqual(mat.data + 4, sub.data);
+}
 
 test "size" {
     var typ = MatType.CV_8UC1;

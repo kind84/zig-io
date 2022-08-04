@@ -1,9 +1,12 @@
 const std = @import("std");
+const BlockInfo = @import("../core/layout.zig").BlockInfo;
+const Mat = @import("../core/mat.zig").Mat;
 const Slide = @import("../core/slide.zig").Slide;
 const ImageFormat = @import("../core/slide.zig").ImageFormat;
 const TIFFMetadata = @import("./metadata.zig").TIFFMetadata;
 const TIFFDirectoryData = @import("./utils.zig").TIFFDirectoryData;
 const TIFFBlockInfo = @import("./utils.zig").TIFFBlockInfo;
+const TIFFEncodedReader = @import("./TIFFEncodedReader.zig").TIFFEncodedReader;
 const c = @import("./metadata.zig").C;
 
 pub const TIFFSlide = @This();
@@ -20,7 +23,7 @@ blockOffsets: u64,
 blockByteCounts: u64,
 compression: u16,
 
-// readEncoded: TIFFReadEncoded,
+reader: TIFFEncodedReader,
 
 pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
     var tiff_slide = TIFFSlide{
@@ -31,6 +34,7 @@ pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
         .blockOffsets = undefined,
         .blockByteCounts = undefined,
         .compression = undefined,
+        .reader = undefined,
     };
 
     try tiff_slide.open(path, allocator);
@@ -39,7 +43,7 @@ pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
 }
 
 pub fn slide(self: *TIFFSlide) Slide {
-    return Slide.init(self, self.imageFormat, open);
+    return Slide.init(self, self.imageFormat, open, readBlockFromFile);
 }
 
 pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !void {
@@ -72,10 +76,10 @@ pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !v
                 // readEncoded = new TiffReadEncodedJpeg(this);
             }
         } else { // not jpeg
-            // readEncoded = new TiffReadEncodedTile;
+            self.reader = TIFFEncodedReader.initTile();
         }
     } else { // not tiled
-        // readEncoded = new TiffReadEncodedStrip;
+        self.reader = TIFFEncodedReader.initStrip();
     }
 
     self.compression = tiff_dir_data.compression;
@@ -105,4 +109,18 @@ fn openFromSingleFile(
     }
 
     self.blockInfos = try m.addBlock();
+}
+
+pub fn readBlockFromFile(self: *TIFFSlide, info: BlockInfo, dst: Mat) !void {
+    if (info.block < 0 or info.block >= self.blockInfos.len) {
+        return error.InvalidBlockIndex;
+    }
+
+    var tiff_info = self.blockInfos[info.block];
+
+    if (c.TIFFCurrentDirectory(tiff_info.tif) != tiff_info.dir) {
+        _ = c.TIFFSetDirectory(tiff_info.tif, @intCast(c_ushort, tiff_info.dir));
+    }
+
+    try self.reader.read(tiff_info, dst, info);
 }
