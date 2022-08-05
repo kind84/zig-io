@@ -35,19 +35,6 @@ pub const BlockInfo = struct {
     rect: Rect3(u32),
 };
 
-pub fn Range(comptime Type: type) type {
-    return struct {
-        begin: Type,
-        end: Type,
-
-        const Self = @This();
-
-        pub fn init(begin: Type, end: Type) Self {
-            return .{ .begin = begin, .end = end };
-        }
-    };
-}
-
 pub const Layout = struct {
     allocator: std.mem.Allocator,
     grid: Grid,
@@ -61,7 +48,7 @@ pub const Layout = struct {
     channels: u32,
     whc: u32,
     wh: u32,
-    cache: std.ArrayList(BlockInfo),
+    cache: std.ArrayList(*BlockInfo),
     contiguous: bool,
 
     pub fn initRegularNoOverlap(
@@ -91,7 +78,7 @@ pub const Layout = struct {
             .channels = channels,
             .whc = gridsize_width * gridsize_height * channels,
             .wh = gridsize_width * gridsize_height,
-            .cache = std.ArrayList(BlockInfo).init(allocator),
+            .cache = std.ArrayList(*BlockInfo).init(allocator),
             .contiguous = channels == 0,
         };
     }
@@ -100,7 +87,7 @@ pub const Layout = struct {
         self.cache.deinit();
     }
 
-    pub fn getIntersect(self: *Layout, region: Rect3(u32), channel: *u32) !Range(*BlockInfo) {
+    pub fn getIntersect(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
         switch (self.typ) {
             LayoutType.RegularNoOverlap => return self.getIntersectRegularNoOverlap(region, channel),
             LayoutType.IrregularNoOverlap => return self.getIntersectIrregularNoOverlap(region, channel),
@@ -109,7 +96,7 @@ pub const Layout = struct {
         }
     }
 
-    fn getIntersectRegularNoOverlap(self: *Layout, region: Rect3(u32), channel: *u32) !Range(*BlockInfo) {
+    fn getIntersectRegularNoOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
         var x1 = region.x / self.block.size.width;
         var y1 = region.y / self.block.size.height;
         var z1 = region.z / self.block.size.depth;
@@ -117,8 +104,6 @@ pub const Layout = struct {
         var x2 = @minimum(self.gridsize.width - 1, (region.x + region.width - 1) / self.block.size.width);
         var y2 = @minimum(self.gridsize.height - 1, (region.y + region.height - 1) / self.block.size.height);
         var z2 = @minimum(self.gridsize.depth - 1, (region.z + region.depth - 1) / self.block.size.depth);
-
-        // self.cache.clearRetainingCapacity();
 
         var x: u32 = x1;
         var y: u32 = y1;
@@ -129,15 +114,15 @@ pub const Layout = struct {
                     var p = Point3(u32).init(x, y, z);
                     var block = self.toBlock(p, channel);
                     var info = try self.getBlock(block, channel);
-                    try self.cache.append(info);
+                    try self.cache.append(&info);
                 }
             }
         }
 
-        return Range(*BlockInfo).init(&self.cache.items[0], &self.cache.items[self.cache.items.len - 1]);
+        return self.cache.toOwnedSlice();
     }
 
-    fn getIntersectIrregularNoOverlap(self: *Layout, region: Rect3(u32), channel: *u32) !Range(*BlockInfo) {
+    fn getIntersectIrregularNoOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
         _ = self;
         _ = region;
         _ = channel;
@@ -145,14 +130,14 @@ pub const Layout = struct {
         return undefined;
     }
 
-    fn getIntersectRegularOverlap(self: *Layout, region: Rect3(u32), channel: *u32) !Range(*BlockInfo) {
+    fn getIntersectRegularOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
         _ = self;
         _ = region;
         _ = channel;
         return undefined;
     }
 
-    fn getIntersectIrregularOverlap(self: *Layout, region: Rect3(u32), channel: *u32) !Range(*BlockInfo) {
+    fn getIntersectIrregularOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
         _ = self;
         _ = region;
         _ = channel;
@@ -330,20 +315,20 @@ test "initRegularNoOverlap" {
     );
     defer layout.deinit();
 
-    try std.testing.expect(layout.grid == Grid.Regular);
-    try std.testing.expect(layout.placement == Placement.NoOverlap);
-    try std.testing.expect(layout.typ == LayoutType.RegularNoOverlap);
+    try std.testing.expectEqual(Grid.Regular, layout.grid);
+    try std.testing.expectEqual(Placement.NoOverlap, layout.placement);
+    try std.testing.expectEqual(LayoutType.RegularNoOverlap, layout.typ);
     try std.testing.expect(std.meta.eql(layout.size, Size3(u32){ .width = 2048, .height = 2048, .depth = 3 }));
     try std.testing.expect(layout.coords == null);
     try std.testing.expect(std.meta.eql(layout.gridsize, Size3(u32){ .width = 4, .height = 4, .depth = 1 }));
     try std.testing.expect(std.meta.eql(layout.block.size, block_size));
     try std.testing.expect(layout.blocks == undefined);
-    try std.testing.expect(layout.channels == channels);
+    try std.testing.expectEqual(channels, layout.channels);
     try std.testing.expect(layout.whc == 48); // 4 * 4 * 3
     try std.testing.expect(layout.wh == 16); // 4 * 4
-    try std.testing.expect(@TypeOf(layout.cache) == std.ArrayList(BlockInfo));
+    try std.testing.expectEqual(std.ArrayList(*BlockInfo), @TypeOf(layout.cache));
     try std.testing.expect(layout.cache.items.len == 0);
-    try std.testing.expect(layout.contiguous == false);
+    try std.testing.expectEqual(false, layout.contiguous);
 }
 
 test "getBlockRegularNoOverlap" {

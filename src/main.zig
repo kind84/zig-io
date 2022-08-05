@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const read = @import("./core/read.zig");
+const MatType = @import("./core/mat.zig").MatType;
 const c = @cImport({
     @cInclude("tiffio.h");
 });
@@ -26,7 +27,7 @@ pub fn main() anyerror!void {
     // }
 
     var num_channels = slide.channelList.len;
-    var file_type: i32 = slide.depth();
+    var file_type: MatType = slide.depth();
 
     if (slide.isContiguous()) {
         if (num_channels > 4) {
