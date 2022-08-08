@@ -1,6 +1,7 @@
 const BlockInfo = @import("../core/layout.zig").BlockInfo;
 const Mat = @import("../core/mat.zig").Mat;
 const TIFFBlockInfo = @import("./utils.zig").TIFFBlockInfo;
+const c = @import("./metadata.zig").C;
 
 const TIFFEncodeType = enum {
     Tile,
@@ -25,8 +26,26 @@ pub fn initStrip() TIFFEncodedReader {
 }
 
 pub fn read(self: TIFFEncodedReader, tiffInfo: TIFFBlockInfo, dst: Mat, info: BlockInfo) !void {
-    _ = self;
-    _ = tiffInfo;
-    _ = dst;
-    _ = info;
+    switch (self.typ) {
+        TIFFEncodeType.Tile => return readTile(tiffInfo, dst, info),
+        TIFFEncodeType.Strip => return readStrip(tiffInfo, dst, info),
+        TIFFEncodeType.Jpeg => return,
+        TIFFEncodeType.DP200 => return,
+    }
+}
+
+fn readTile(tiffInfo: TIFFBlockInfo, dst: Mat, _: BlockInfo) !void {
+    var tile_size = c.TIFFTileSize(tiffInfo.tif);
+
+    if (c.TIFFReadEncodedTile(tiffInfo.tif, tiffInfo.block, dst.data, tile_size) == 1) {
+        return error.Internal;
+    }
+}
+
+fn readStrip(tiffInfo: TIFFBlockInfo, dst: Mat, _: BlockInfo) !void {
+    var strip_size = c.TIFFStripSize(tiffInfo.tif);
+
+    if (c.TIFFReadEncodedStrip(tiffInfo.tif, tiffInfo.block, dst.data, strip_size) == 1) {
+        return error.Internal;
+    }
 }
