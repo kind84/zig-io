@@ -129,7 +129,7 @@ pub const TIFFDirectoryData = struct {
         return tdd;
     }
 
-    pub fn deinit(self: TIFFDirectoryData) !void {
+    pub fn deinit(self: TIFFDirectoryData) void {
         self.allocator.free(self.description);
     }
 };

@@ -11,6 +11,7 @@ const c = @import("metadata.zig").C;
 
 pub const OMETIFFMetadata = @This();
 
+arena: std.heap.ArenaAllocator,
 allocator: std.mem.Allocator,
 channels: u16,
 slices: u16,
@@ -18,11 +19,20 @@ plane_map: [][]usize,
 metadata: *TIFFMetadata,
 
 pub fn init(
-    allocator: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     metadata: *TIFFMetadata,
     dirs: []TIFFDirectoryData,
 ) !?OMETIFFMetadata {
+    defer {
+        for (dirs) |dir| {
+            dir.deinit();
+        }
+        alloc.free(dirs);
+    }
     if (dirs.len == 0) return null;
+
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    const allocator = arena.allocator();
 
     // find the first full resolution IFD
     var d: usize = 0;
@@ -49,6 +59,7 @@ pub fn init(
     // Find all the TIFFDirectoryData that represent an image
     // of a matching size & type
     var full_resolution_dirs = std.ArrayList(usize).init(allocator);
+    defer full_resolution_dirs.deinit();
     for (dirs) |dir, i| {
         if (dir.subFileType == 0 and std.meta.eql(dir.size, metadata.size)) {
             try full_resolution_dirs.append(i);
@@ -361,6 +372,7 @@ pub fn init(
     metadata.imageFormat = ImageFormat.OME;
 
     return OMETIFFMetadata{
+        .arena = arena,
         .allocator = allocator,
         .channels = size_C,
         .slices = size_Z,
@@ -369,16 +381,21 @@ pub fn init(
     };
 }
 
+pub fn deinit(self: OMETIFFMetadata) void {
+    self.arena.deinit();
+}
+
 pub fn addBlock(self: OMETIFFMetadata) ![]TIFFBlockInfo {
     var m = self.metadata;
     var nbz: u32 = m.size.depth / m.blocksize.depth;
     // TODO: FIXME
     // var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else CV_MAT_CN(m.typ);
-    var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else 1;
+    var nbc: usize = if (m.planarConfig == @intCast(u16, c.PLANARCONFIG_CONTIG)) 1 else m.typ.?.channels();
     var nbb: u32 = ((1 + ((m.size.width - 1) / m.blocksize.width)) *
         (1 + ((m.size.height - 1) / m.blocksize.height)));
 
-    var block_infos = std.ArrayList(TIFFBlockInfo).init(self.allocator);
+    std.debug.print("{d}\n", .{@as(usize, nbb * nbc * nbz)});
+    var block_infos = try std.ArrayList(TIFFBlockInfo).initCapacity(self.allocator, @as(usize, nbb * nbc * nbz));
     var block: u32 = 0;
     var zz: usize = 0;
     while (zz < nbz) : (zz += 1) {
@@ -392,7 +409,7 @@ pub fn addBlock(self: OMETIFFMetadata) ![]TIFFBlockInfo {
                     .block = block,
                 };
 
-                try block_infos.append(info);
+                block_infos.appendAssumeCapacity(info);
                 block += 1;
             }
         }

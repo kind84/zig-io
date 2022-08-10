@@ -42,6 +42,12 @@ pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
     return tiff_slide;
 }
 
+pub fn deinit(self: *TIFFSlide) void {
+    for (self.metadata) |m| {
+        _ = c.TIFFClose(m.tif);
+    }
+}
+
 pub fn slide(self: *TIFFSlide) Slide {
     return Slide.init(self, self.imageFormat, open, readBlockFromFile);
 }
@@ -84,6 +90,7 @@ pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !v
 
     self.compression = tiff_dir_data.compression;
 
+    // TODO
     // resize RGBA buffer as required
     // if (compression == COMPRESSION_JPEG && photometric == PHOTOMETRIC_YCBCR) {
     //   Size3 maxBlock = layout_->maxBlockSize();
@@ -97,7 +104,7 @@ fn openFromSingleFile(
     path: []const u8,
     allocator: std.mem.Allocator,
 ) !void {
-    var m = try TIFFMetadata.provide(allocator, path);
+    var m = try TIFFMetadata.init(allocator, path);
     self.metadata = &[_]TIFFMetadata{m};
     self.imageFormat = m.imageFormat;
 
@@ -123,4 +130,20 @@ pub fn readBlockFromFile(self: *TIFFSlide, info: BlockInfo, dst: Mat) !void {
     }
 
     try self.reader.read(tiff_info, dst, info);
+}
+
+test "init" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+
+    const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
+
+    var tiff_slide = try TIFFSlide.init(path, allocator);
+    defer tiff_slide.deinit();
+
+    try std.testing.expectEqual(ImageFormat.OME, tiff_slide.imageFormat);
 }
