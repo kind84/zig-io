@@ -1,10 +1,7 @@
 const std = @import("std");
+const MatType = @import("../core/mat.zig").MatType;
 const Size3 = @import("../core/size.zig").Size3;
 const c = @import("metadata.zig").C;
-// const c = @cImport({
-//     @cInclude("tiff.h");
-//     @cInclude("tiffio.h");
-// });
 
 pub const TIFFBlockInfo = struct {
     tif: *c.TIFF,
@@ -133,3 +130,161 @@ pub const TIFFDirectoryData = struct {
         self.allocator.free(self.description);
     }
 };
+
+pub fn computeMatType(
+    format: u16,
+    photometric: u16,
+    nBits: u16,
+    nSamples: u16,
+    nChannels: u16,
+) !MatType {
+    // TODO
+    // if (CV_DIV2_REM(nbits, 3) != 0) {
+    //   CV_Error(Error::StsBadArg, "'nbits' must be multiple of 8");
+    // }
+
+    if (nSamples < 1) {
+        return error.BadArg;
+    }
+    if (nSamples < 3 and photometric == @intCast(u16, c.PHOTOMETRIC_RGB)) {
+        return error.BadArg;
+    }
+    if (nSamples != 3 and photometric == @intCast(u16, c.PHOTOMETRIC_YCBCR)) {
+        return error.BadArg;
+    }
+    if (nSamples != 1 and photometric == @intCast(u16, c.PHOTOMETRIC_PALETTE)) {
+        return error.BadArg;
+    }
+
+    // allow for multiple channels
+    var n_samples = nSamples * nChannels;
+
+    switch (format) {
+        @intCast(u16, c.SAMPLEFORMAT_UINT) => {
+            switch (nBits) {
+                8 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_8UC1,
+                        2 => return MatType.CV_8UC2,
+                        3 => return MatType.CV_8UC3,
+                        4 => return MatType.CV_8UC4,
+                        else => unreachable,
+                    }
+                },
+                16 => {
+                    std.debug.print("{d}\n", .{n_samples});
+                    switch (n_samples) {
+                        1 => return MatType.CV_16UC1,
+                        2 => return MatType.CV_16UC2,
+                        3 => return MatType.CV_16UC3,
+                        4 => return MatType.CV_16UC4,
+                        else => unreachable,
+                    }
+                },
+                else => return error.UnsupportedFormat,
+            }
+        },
+        @intCast(u16, c.SAMPLEFORMAT_INT) => {
+            switch (nBits) {
+                8 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_8SC1,
+                        2 => return MatType.CV_8SC2,
+                        3 => return MatType.CV_8SC3,
+                        4 => return MatType.CV_8SC4,
+                        else => unreachable,
+                    }
+                },
+                16 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_16SC1,
+                        2 => return MatType.CV_16SC2,
+                        3 => return MatType.CV_16SC3,
+                        4 => return MatType.CV_16SC4,
+                        else => unreachable,
+                    }
+                },
+                32 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_32SC1,
+                        2 => return MatType.CV_32SC2,
+                        3 => return MatType.CV_32SC3,
+                        4 => return MatType.CV_32SC4,
+                        else => unreachable,
+                    }
+                },
+                else => return error.UnsupportedFormat,
+            }
+        },
+        @intCast(u16, c.SAMPLEFORMAT_IEEEFP) => {
+            switch (nBits) {
+                32 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_32FC1,
+                        2 => return MatType.CV_32FC2,
+                        3 => return MatType.CV_32FC3,
+                        4 => return MatType.CV_32FC4,
+                        else => unreachable,
+                    }
+                },
+                64 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_64FC1,
+                        2 => return MatType.CV_64FC2,
+                        3 => return MatType.CV_64FC3,
+                        4 => return MatType.CV_64FC4,
+                        else => unreachable,
+                    }
+                },
+                else => return error.UnsupportedFormat,
+            }
+        },
+        @intCast(u16, c.SAMPLEFORMAT_VOID) => return error.UnsupportedFormat, // unspecified
+        @intCast(u16, c.SAMPLEFORMAT_COMPLEXINT) => return error.UnsupportedFormat, // not supported yet
+        @intCast(u16, c.SAMPLEFORMAT_COMPLEXIEEEFP) => return error.UnsupportedFormat, // not supported yet
+        else => {
+            // unable to find the correct OpenCV type using 'format', likely because the
+            // tag is missing from the TIFF file. Return default type in function of the
+            // number of bits and number of samples.
+            switch (nBits) {
+                8 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_8UC1,
+                        2 => return MatType.CV_8UC2,
+                        3 => return MatType.CV_8UC3,
+                        4 => return MatType.CV_8UC4,
+                        else => unreachable,
+                    }
+                },
+                16 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_16UC1,
+                        2 => return MatType.CV_16UC2,
+                        3 => return MatType.CV_16UC3,
+                        4 => return MatType.CV_16UC4,
+                        else => unreachable,
+                    }
+                },
+                32 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_32FC1,
+                        2 => return MatType.CV_32FC2,
+                        3 => return MatType.CV_32FC3,
+                        4 => return MatType.CV_32FC4,
+                        else => unreachable,
+                    }
+                },
+                64 => {
+                    switch (n_samples) {
+                        1 => return MatType.CV_64FC1,
+                        2 => return MatType.CV_64FC2,
+                        3 => return MatType.CV_64FC3,
+                        4 => return MatType.CV_64FC4,
+                        else => unreachable,
+                    }
+                },
+                else => return MatType.CV_8UC1,
+            }
+        },
+    }
+}

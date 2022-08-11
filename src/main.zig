@@ -11,7 +11,7 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     // const path = "/home/paolo/Downloads/image-set-001/TCGA-60.ome.tiff";
-    const path = "/home/paolo/Downloads/pd-l1ktnslcS5.ome.tiff";
+    const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
 
     var slide = try read.openSlide(path, allocator);
 

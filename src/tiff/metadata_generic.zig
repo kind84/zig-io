@@ -21,8 +21,9 @@ pub fn deinit(self: GenericTIFFMetadata) void {
     _ = self;
 }
 
-pub fn addBlock(self: GenericTIFFMetadata) ![]TIFFBlockInfo {
+pub fn addBlock(self: GenericTIFFMetadata, allocator: std.mem.Allocator) ![]TIFFBlockInfo {
     _ = self;
+    _ = allocator;
     std.debug.print("Yay Generic TIFF!\n", .{});
     return &[_]TIFFBlockInfo{};
 }
