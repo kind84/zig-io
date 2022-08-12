@@ -107,8 +107,9 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
     return self;
 }
 
-pub fn deinit(self: *TIFFMetadata) void {
+pub fn deinit(self: TIFFMetadata) void {
     self.metadataType.deinit();
+    _ = c.TIFFClose(self.tif);
 }
 
 pub fn addBlock(self: TIFFMetadata) ![]TIFFBlockInfo {
@@ -143,6 +144,6 @@ test "addBlock OME" {
     defer meta.deinit();
 
     const infos = try meta.addBlock();
-    _ = infos;
-    // std.debug.print("{any}\n", .{infos});
+    defer allocator.free(infos);
+    std.debug.print("{any}\n", .{infos});
 }

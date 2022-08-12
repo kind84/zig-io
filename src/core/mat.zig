@@ -4,19 +4,21 @@ const Size3 = @import("size.zig").Size3;
 
 const auto_step: usize = 0;
 
+/// Porting of OpenCV Mat. N-dimensional dense numerical single-channel or
+/// multi-channel array.
 pub const Mat = struct {
     allocator: std.mem.Allocator,
     typ: MatType,
     data: [*]u8,
     dims: u8,
-    rows: u32,
-    cols: u32,
-    // size: MatSize, TODO
+    rows: usize,
+    cols: usize,
+    size: []usize,
     step: [2]usize,
 
     // TODO switch to dims & size args
     // modules/core/src/matrix.cpp L371
-    pub fn initEmpty(allocator: std.mem.Allocator, rows: u32, cols: u32, typ: MatType) !Mat {
+    pub fn initEmpty(allocator: std.mem.Allocator, rows: usize, cols: usize, typ: MatType) !Mat {
         const esz: usize = typ.elemSize();
         const data_size = @as(usize, rows) * @as(usize, cols) * esz;
         var data = try allocator.alloc(u8, data_size);
@@ -28,12 +30,13 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
+            .size = &[1]usize{rows},
             .step = [2]usize{ 0, 0 },
         };
     }
 
     // modules/core/src/matrix.cpp L419
-    pub fn initFull(allocator: std.mem.Allocator, rows: u32, cols: u32, typ: MatType, data: [*]u8, step: ?usize) !Mat {
+    pub fn initFull(allocator: std.mem.Allocator, rows: usize, cols: usize, typ: MatType, data: [*]u8, step: ?usize) !Mat {
         const esz: usize = typ.elemSize();
         const min_step: usize = @as(usize, cols) * esz;
         var stp: usize = step orelse min_step;
@@ -52,6 +55,7 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
+            .size = &[1]usize{rows},
             .step = [2]usize{ stp, esz },
         };
     }
@@ -64,7 +68,7 @@ pub const Mat = struct {
 
     /// returns a new Mat of the provided roi. The underlying data is not
     /// copied.
-    pub fn subMat(self: Mat, roi: Rect(u32)) Mat {
+    pub fn subMat(self: Mat, roi: Rect(usize)) Mat {
         std.debug.assert(self.dims <= 2);
 
         var esz = self.elemSize();
@@ -77,6 +81,7 @@ pub const Mat = struct {
             .dims = self.dims,
             .rows = roi.height,
             .cols = roi.width,
+            .size = &[1]usize{roi.height},
             .step = [2]usize{ self.step[0], esz },
         };
     }
@@ -89,7 +94,7 @@ pub const Mat = struct {
         return self.typ.elemSize();
     }
 
-    fn create(self: Mat, dims: usize, mat_size: Size3(u32), typ: MatType) !void {
+    fn create(self: Mat, dims: usize, mat_size: Size3(usize), typ: MatType) !void {
         // TODO
         _ = self;
         _ = dims;
@@ -168,9 +173,9 @@ test "initEmpty" {
     defer mat.deinit();
 
     try std.testing.expectEqual(MatType.CV_8UC1, mat.typ);
-    try std.testing.expectEqual(@as(u32, 4), mat.rows);
-    try std.testing.expectEqual(@as(u32, 4), mat.cols);
-    try std.testing.expectEqual(@as(u32, 2), mat.dims);
+    try std.testing.expectEqual(@as(usize, 4), mat.rows);
+    try std.testing.expectEqual(@as(usize, 4), mat.cols);
+    try std.testing.expectEqual(@as(usize, 2), mat.dims);
     try std.testing.expect(std.mem.eql(usize, &[2]usize{ 0, 0 }, &mat.step));
 }
 
@@ -194,9 +199,9 @@ test "initFull" {
 
     try std.testing.expectEqual(MatType.CV_8UC1, mat.typ);
     try std.testing.expect(data.ptr == mat.data);
-    try std.testing.expectEqual(@as(u32, 4), mat.rows);
-    try std.testing.expectEqual(@as(u32, 4), mat.cols);
-    try std.testing.expectEqual(@as(u32, 2), mat.dims);
+    try std.testing.expectEqual(@as(usize, 4), mat.rows);
+    try std.testing.expectEqual(@as(usize, 4), mat.cols);
+    try std.testing.expectEqual(@as(usize, 2), mat.dims);
     try std.testing.expect(std.mem.eql(usize, &[2]usize{ 4, 1 }, &mat.step));
 }
 
@@ -218,7 +223,7 @@ test "subMat" {
     var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data.ptr, null);
     defer mat.deinit();
 
-    const rect = Rect(u32).init(0, 1, 2, 2);
+    const rect = Rect(usize).init(0, 1, 2, 2);
     const sub = mat.subMat(rect);
 
     try std.testing.expectEqual(rect.height, sub.rows);

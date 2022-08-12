@@ -1,7 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const read = @import("./core/read.zig");
+const Mat = @import("./core/mat.zig").Mat;
 const MatType = @import("./core/mat.zig").MatType;
+const Rect3 = @import("./core/rect.zig").Rect3;
 const c = @cImport({
     @cInclude("tiffio.h");
 });
@@ -52,5 +54,11 @@ pub fn main() anyerror!void {
         }
     }
 
-    std.debug.print("{any}\n", .{slide});
+    // std.debug.print("{any}\n", .{slide});
+    var dst = try Mat.initEmpty(allocator, 1, 1, MatType.CV_8UC1);
+    defer dst.deinit();
+    var region = Rect3(usize).init(0, 0, 0, 100, 100, 1);
+    var channel: usize = 1;
+    try slide.getRegion(allocator, region, channel, &dst);
+    std.debug.print("{any}\n", .{dst});
 }
