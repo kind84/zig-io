@@ -329,7 +329,7 @@ pub fn init(
     metadata.size.depth = size_Z;
     metadata.blocksize = ifd0.blocksize;
 
-    // get resolution from tiff (required for some  Ultivue tiffs)
+    // get resolution from tiff (required for some Ultivue tiffs)
     if (ifd0.xresolution > 0 and ifd0.yresolution > 0) {
         switch (ifd0.resolutionUnit) {
             c.RESUNIT_NONE => {}, // do nothing with unitless value (i.e. pixelsize_ == 0)
@@ -429,4 +429,19 @@ pub fn addBlock(self: OMETIFFMetadata, allocator: std.mem.Allocator) ![]TIFFBloc
 
     std.debug.print("Yay OMETIFF!\n", .{});
     return block_infos.toOwnedSlice();
+}
+
+test "init" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+
+    const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
+    var meta = try init(allocator, path);
+    defer meta.deinit();
+
+    try std.testing.expectEqual(ImageFormat.OME, meta.imageFormat);
 }
