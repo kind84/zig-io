@@ -9,5 +9,9 @@ name: []const u8,
 // see ToDo on
 // https://downloads.openmicroscopy.org/bio-formats-cpp/5.1.1/api/classome_1_1xml_1_1model_1_1primitives_1_1Color.html
 color: []const u8,
+
 contrastMethod: []const u8,
+
 fluor: []const u8,
+
+emissionWavelength: []const u8,

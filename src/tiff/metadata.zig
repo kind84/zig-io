@@ -62,9 +62,10 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         var dir_no: usize = 0;
         while (true) : (dir_no += 1) {
             std.debug.print("reading IFD no {d}\n", .{dir_no});
-            var dir = TIFFDirectoryData.init(tiff);
+            var dir = try TIFFDirectoryData.init(allocator, tiff);
             try dirs_array.append(dir);
             if (c.TIFFReadDirectory(tiff) == 0) break;
+            std.debug.print("DESCR: {s}\n", .{dir.description});
         }
 
         // reset directory index

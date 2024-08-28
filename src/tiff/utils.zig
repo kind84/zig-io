@@ -13,9 +13,10 @@ pub const TIFFBlockInfo = struct {
 };
 
 pub const TIFFDirectoryData = struct {
+    allocator: std.mem.Allocator,
     format: u16,
     nbits: u16,
-    nsamples: u16,
+    n_samples: u16,
     planarConfig: u16,
     compression: u16,
     photometric: u16,
@@ -26,10 +27,11 @@ pub const TIFFDirectoryData = struct {
     subFileType: u32,
     xresolution: f32,
     yresolution: f32,
-    description: []const u8,
+    description: []u8,
 
-    pub fn init(tif: *c.TIFF) TIFFDirectoryData {
+    pub fn init(allocator: std.mem.Allocator, tif: *c.TIFF) !TIFFDirectoryData {
         var tdd = TIFFDirectoryData{
+            .allocator = allocator,
             .format = 0,
             .nbits = 0,
             .nsamples = 0,
@@ -114,13 +116,22 @@ pub const TIFFDirectoryData = struct {
         var desc: [*:0]const u8 = &[_:0]u8{};
         std.debug.print("reading tiff file description\n", .{});
         if (c.TIFFGetField(tif, c.TIFFTAG_IMAGEDESCRIPTION, &desc) == 1) {
-            // if (desc) |d| {
-            std.debug.print("{s}\n", .{desc});
-            tdd.description = std.mem.span(desc);
-            // }
+            std.debug.print("desc: {s}\n", .{desc});
+            var description = std.mem.span(desc);
+
+            // if kept on the stack, the description gets jammed once the
+            // directory data gets moved into the heap in the tiff metadata
+            // array.
+            var heap_description = try allocator.alloc(u8, description.len);
+            std.mem.copy(u8, heap_description, description);
+            tdd.description = heap_description;
         }
         std.debug.print("reading tiff file description done\n", .{});
 
         return tdd;
+    }
+
+    pub fn deinit(self: TIFFDirectoryData) !void {
+        self.allocator.free(self.description);
     }
 };
