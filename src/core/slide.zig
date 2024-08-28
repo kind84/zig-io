@@ -104,7 +104,7 @@ pub const Slide = struct {
         self.readBlockFromFileFn(self.ptr, info, dst);
     }
 
-    pub fn getRegion(self: Slide, region: Rect3(u32), channel: u32, dst: *Mat) !void {
+    pub fn getRegion(self: Slide, allocator: std.mem.Allocator, region: Rect3(u32), channel: u32, dst: *Mat) !void {
         var range: []*BlockInfo = self.layout.getIntersect(region, &channel);
         if (range.len == 0) return;
 
@@ -125,7 +125,7 @@ pub const Slide = struct {
         var typ = if (self.isContiguous()) self.typ else self.depth();
 
         for (range) |info| {
-            var src = Mat.initEmpty(info.rect.height, info.rect.width, typ);
+            var src = Mat.initEmpty(allocator, info.rect.height, info.rect.width, typ);
             try self.readBlockFromFile(info, src);
             try self.copyTo(info.rect, region, src, dst);
         }

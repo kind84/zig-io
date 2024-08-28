@@ -20,6 +20,7 @@ pub const Mat = struct {
         const esz: usize = typ.elemSize();
         const data_size = @as(usize, rows) * @as(usize, cols) * esz;
         var data = try allocator.alloc(u8, data_size);
+
         return Mat{
             .allocator = allocator,
             .typ = typ,
@@ -27,12 +28,12 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
-            .step = [2]usize{},
+            .step = [2]usize{ 0, 0 },
         };
     }
 
     // modules/core/src/matrix.cpp L419
-    pub fn initFull(rows: u32, cols: u32, typ: MatType, data: [*]u8, step: ?usize) !Mat {
+    pub fn initFull(allocator: std.mem.Allocator, rows: u32, cols: u32, typ: MatType, data: [*]u8, step: ?usize) !Mat {
         const esz: usize = typ.elemSize();
         const min_step: usize = @as(usize, cols) * esz;
         var stp: usize = step orelse min_step;
@@ -45,6 +46,7 @@ pub const Mat = struct {
         }
 
         return Mat{
+            .allocator = allocator,
             .typ = typ,
             .data = data,
             .dims = 2,
@@ -55,7 +57,9 @@ pub const Mat = struct {
     }
 
     pub fn deinit(self: Mat) void {
-        self.allocator.free(self.data);
+        const esz: usize = self.typ.elemSize();
+        const data_size = @as(usize, self.rows) * @as(usize, self.cols) * esz;
+        self.allocator.free(self.data[0..data_size]);
     }
 
     /// returns a new Mat of the provided roi. The underlying data is not
@@ -67,6 +71,7 @@ pub const Mat = struct {
         var data = self.data + (roi.y * self.step[0]) + (roi.x * esz);
 
         return Mat{
+            .allocator = self.allocator,
             .typ = self.typ,
             .data = data,
             .dims = self.dims,
@@ -151,17 +156,44 @@ pub const MatType = enum(u8) {
     }
 };
 
+test "initEmpty" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+
+    var mat = try Mat.initEmpty(allocator, 4, 4, MatType.CV_8UC1);
+    defer mat.deinit();
+
+    try std.testing.expectEqual(MatType.CV_8UC1, mat.typ);
+    try std.testing.expectEqual(@as(u32, 4), mat.rows);
+    try std.testing.expectEqual(@as(u32, 4), mat.cols);
+    try std.testing.expectEqual(@as(u32, 2), mat.dims);
+    try std.testing.expect(std.mem.eql(usize, &[2]usize{ 0, 0 }, &mat.step));
+}
+
 test "initFull" {
-    var data = [_]u8{
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+    var data: []u8 = try allocator.alloc(u8, 16);
+    var data_slice = &[_]u8{
         1, 1, 1, 1,
         2, 2, 2, 2,
         3, 3, 3, 3,
         4, 4, 4, 4,
     };
-    var mat = try Mat.initFull(4, 4, MatType.CV_8UC1, &data, null);
+    std.mem.copy(u8, data, data_slice);
+    var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data.ptr, null);
+    defer mat.deinit();
 
     try std.testing.expectEqual(MatType.CV_8UC1, mat.typ);
-    try std.testing.expect(&data == mat.data);
+    try std.testing.expect(data.ptr == mat.data);
     try std.testing.expectEqual(@as(u32, 4), mat.rows);
     try std.testing.expectEqual(@as(u32, 4), mat.cols);
     try std.testing.expectEqual(@as(u32, 2), mat.dims);
@@ -169,13 +201,22 @@ test "initFull" {
 }
 
 test "subMat" {
-    var data = [_]u8{
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+    var data: []u8 = try allocator.alloc(u8, 16);
+    var data_slice = &[_]u8{
         1, 1, 1, 1,
         2, 2, 2, 2,
         3, 3, 3, 3,
         4, 4, 4, 4,
     };
-    const mat = try Mat.initFull(4, 4, MatType.CV_8UC1, &data, null);
+    std.mem.copy(u8, data, data_slice);
+    var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data.ptr, null);
+    defer mat.deinit();
 
     const rect = Rect(u32).init(0, 1, 2, 2);
     const sub = mat.subMat(rect);
