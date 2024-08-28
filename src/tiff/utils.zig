@@ -288,3 +288,28 @@ pub fn computeMatType(
         },
     }
 }
+
+test "init" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+
+    const path: []const u8 = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
+
+    var maybe_tif = c.TIFFOpen(path.ptr, "r8");
+    if (maybe_tif) |tiff| {
+        defer {
+            _ = c.TIFFClose(tiff);
+        }
+
+        const tdd = try TIFFDirectoryData.init(allocator, tiff);
+        defer tdd.deinit();
+
+        try std.testing.expectEqual(@as(u16, 8), tdd.nbits);
+        try std.testing.expectEqual(@as(u16, 3), tdd.n_samples);
+        try std.testing.expectEqual(@as(u16, 1), tdd.compression); // Compression None
+    } else unreachable;
+}
