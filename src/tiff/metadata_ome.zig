@@ -1,14 +1,19 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const xml = @import("../xml.zig");
 const TIFFMetadata = @import("metadata.zig");
 const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
 const Channel = @import("../core/Channel.zig");
 const Size3 = @import("../core/size.zig").Size3;
+const ImageFormat = @import("../core/Slide.zig").ImageFormat;
 const c = @import("metadata.zig").C;
 
 pub const OMETIFFMetadata = @This();
 
-plane_map: [][]u16,
+channels: u16,
+slices: u16,
+plane_map: [][]usize,
+metadata: *TIFFMetadata,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -48,7 +53,7 @@ pub fn init(
         }
     }
 
-    var n_IFDs = full_resolution_dirs.len;
+    var n_IFDs = @intCast(u16, full_resolution_dirs.items.len);
     if (n_IFDs == 0) {
         std.debug.print("No valid images in file\n", .{});
         return null;
@@ -68,25 +73,31 @@ pub fn init(
         return null;
     }
 
-    std.debug.print("{s}\n", .{ifd0.description});
-    // var xml_stream = xml.parse(allocator, ifd0.description) catch return null;
-    var xml_stream = try xml.parse(allocator, ifd0.description);
+    var xml_stream = xml.parse(allocator, ifd0.description) catch return null;
     defer xml_stream.deinit();
 
-    var image = xml_stream.root.findChildByTag("Image");
+    var image = xml_stream.root.findChildByTag("Image") orelse return null;
     var pixels = image.findChildByTag("Pixels") orelse return null;
-    var size_Z: u16 = pixels.getAttribute("SizeZ");
-    var size_C: u16 = pixels.getAttribute("SizeC");
-    var size_T: u16 = pixels.getAttribute("SizeT");
-    var physical_size_X: f32 = pixels.getAttribute("PhysicalSizeX");
-    var unit_X: []const u8 = pixels.getAttribute("PhysicalSizeXUnit");
-    var physical_size_Y: f32 = pixels.getAttribute("PhysicalSizeY");
-    var unit_Y: []const u8 = pixels.getAttribute("PhysicalSizeYUnit");
-    var physical_size_Z: f32 = pixels.getAttribute("PhysicalSizeZ");
-    var unit_Z: []const u8 = pixels.getAttribute("PhysicalSizeZUnit");
+
+    var size_Z_string: []const u8 = pixels.getAttribute("SizeZ") orelse return null;
+    var size_Z: u16 = std.fmt.parseInt(u16, size_Z_string, 10) catch 0;
+    var size_C_string: []const u8 = pixels.getAttribute("SizeC") orelse return null;
+    var size_C: u16 = std.fmt.parseInt(u16, size_C_string, 10) catch 0;
+    var size_T_string: []const u8 = pixels.getAttribute("SizeT") orelse return null;
+    var size_T: u16 = std.fmt.parseInt(u16, size_T_string, 10) catch 0;
+
+    var physical_size_X_string: []const u8 = pixels.getAttribute("PhysicalSizeX") orelse "";
+    var physical_size_X: f32 = std.fmt.parseFloat(f32, physical_size_X_string) catch 0;
+    var unit_X: []const u8 = pixels.getAttribute("PhysicalSizeXUnit") orelse "";
+    var physical_size_Y_string: []const u8 = pixels.getAttribute("PhysicalSizeY") orelse "";
+    var physical_size_Y: f32 = std.fmt.parseFloat(f32, physical_size_Y_string) catch 0;
+    var unit_Y: []const u8 = pixels.getAttribute("PhysicalSizeYUnit") orelse "";
+    var physical_size_Z_string: []const u8 = pixels.getAttribute("PhysicalSizeZ") orelse "";
+    var physical_size_Z: f32 = std.fmt.parseFloat(f32, physical_size_Z_string) catch 0;
+    var unit_Z: []const u8 = pixels.getAttribute("PhysicalSizeZUnit") orelse "";
 
     if (size_T != 1) {
-        std.debug.print("Unsupported multiple Timepoints in OME-tiff");
+        std.debug.print("Unsupported multiple Timepoints in OME-tiff\n", .{});
         return null;
     }
 
@@ -108,7 +119,7 @@ pub fn init(
 
         // failed to find all expected IFDs
         // so adjust sizes for missing planes
-        std.debug.print("Missing IFDs adjusting size accordingly!");
+        std.debug.print("Missing IFDs adjusting size accordingly!\n", .{});
 
         if (size_C_planes == 1) {
             size_Z = n_IFDs;
@@ -118,67 +129,224 @@ pub fn init(
             size_C = n_IFDs * ifd0.n_samples;
             size_C_planes = n_IFDs;
         } else {
-            std.debug.print("Unsupported Missing IFDs in 4D data!");
+            std.debug.print("Unsupported Missing IFDs in 4D data!\n", .{});
             return null;
         }
     }
 
-    var validIFDs: u16 = 0;
-    // TODO allocate plane_map
-    var plane_outer = try allocator.alloc([]u16, size_Z);
+    var valid_IFDs: u16 = 0;
+    var plane_outer = try allocator.alloc([]usize, size_Z);
+    for (plane_outer) |*out| {
+        out.* = try allocator.alloc(usize, size_C_planes);
+    }
 
     var channel_list = try std.ArrayList(Channel).initCapacity(allocator, size_C);
 
     var xml_channels = pixels.findChildrenByTag("Channel");
     while (xml_channels.next()) |xml_channel| {
-        var name: []const u8 = xml_channel.getAttribute("Name");
-        var color: []const u8 = xml_channel.getAttribute("Color");
-        var acquisition_mode: []const u8 = xml_channel.getAttribute("AcquisitionMode");
-        var contrast_method: []const u8 = xml_channel.getAttribute("ContrastMethod");
-        var fluor: []const u8 = xml_channel.getAttribute("Fluor");
-        var emission_wavelength: []const u8 = xml_channel.getAttribute("EmissionWavelength");
+        var name: []const u8 = xml_channel.getAttribute("Name") orelse "";
+        var color: []const u8 = xml_channel.getAttribute("Color") orelse "";
+        var acquisition_mode: []const u8 = xml_channel.getAttribute("AcquisitionMode") orelse "";
+        var contrast_method: []const u8 = xml_channel.getAttribute("ContrastMethod") orelse "";
+        var fluor: []const u8 = xml_channel.getAttribute("Fluor") orelse "";
+        var emission_wavelength: []const u8 = xml_channel.getAttribute("EmissionWavelength") orelse "";
 
-        var id_attribute: []const u8 = xml_channel.getAttribute("ID");
-        var id_index: usize = undefined;
-        if (std.mem.indexOf(u8, id_attribute[8..], ":")) |id_idx| {
-            id_index = id_idx;
+        var id_attribute: []const u8 = xml_channel.getAttribute("ID") orelse return null;
+        var id: u16 = undefined;
+        if (std.mem.indexOf(u8, id_attribute[8..], ":")) |id_index| {
+            var id_string = id_attribute[id_index + 9 ..];
+            id = std.fmt.parseInt(u16, id_string, 10) catch return null;
         } else return null;
-        var id_string = ifd0.description[id_index + 1 ..];
-        var id = try std.fmt.parseInt(id_string);
-        //var id = std.fmt.parseInt(id_string) catch return null;
 
-        var spp_string: []const u8 = xml_channel.getAttribute("SamplesPerPixel");
-        var samples_per_pixel = std.fmt.parseInt(spp_string) catch return null;
+        var spp_string: []const u8 = xml_channel.getAttribute("SamplesPerPixel") orelse return null;
+        var samples_per_pixel: u16 = std.fmt.parseInt(u16, spp_string, 10) catch 0;
         if (samples_per_pixel != ifd0.n_samples) {
-            std.debug.print("Unsupported inconsistent value in OME-XML!");
+            std.debug.print("Unsupported inconsistent value in OME-XML!\n", .{});
             return null;
         }
 
-        var channel = Channel{};
-        
-        if (id > -1 and id < size_C) {
+        var channel = Channel{
+            .name = undefined,
+            .color = undefined,
+            .contrastMethod = undefined,
+            .fluor = undefined,
+            .emissionWavelength = undefined,
+            .exposureTime = undefined,
+            .exposureTimeUnit = undefined,
+        };
+
+        if (id < size_C) {
             channel.name = name;
             channel.color = color;
             channel.contrastMethod = contrast_method;
-            if (contrast_method != ""){
+            if (!std.mem.eql(u8, contrast_method, "")) {
                 channel.emissionWavelength = emission_wavelength;
-            } else if (acquisition_mode == "Brightfield") {
+            } else if (std.mem.eql(u8, acquisition_mode, "Brightfield")) {
                 channel.contrastMethod = acquisition_mode;
             }
-            if (fluor != ""){
+            if (!std.mem.eql(u8, fluor, "")) {
                 channel.fluor = fluor;
-                if (name == ""){
+                if (std.mem.eql(u8, name, "")) {
                     channel.name = fluor;
                 }
-                if (contrast_method == "") {
+                if (std.mem.eql(u8, contrast_method, "")) {
                     channel.contrastMethod = "Fluorescence";
                 }
             }
+            if (!std.mem.eql(u8, emission_wavelength, "")) {}
             channel.emissionWavelength = emission_wavelength;
+
+            // TODO: set emission wavelength unit
+        }
+
+        try channel_list.append(channel);
+    }
+
+    var xml_tiff_datas = pixels.findChildrenByTag("TiffData");
+    while (xml_tiff_datas.next()) |xml_tiff_data| {
+        var plane_count: i16 = -1;
+        if (xml_tiff_data.attributes.len == 0) {
+            std.debug.print("invalid empty TiffData in OME-XML\n", .{});
+            return null;
+        }
+
+        var ifd_string: []const u8 = xml_tiff_data.getAttribute("IFD") orelse return null;
+        var ifd: usize = std.fmt.parseInt(usize, ifd_string, 10) catch return null;
+        var chan_string: []const u8 = xml_tiff_data.getAttribute("FirstC") orelse return null;
+        var chan: usize = std.fmt.parseInt(usize, chan_string, 10) catch return null;
+        var z_plane_string: []const u8 = xml_tiff_data.getAttribute("FirstZ") orelse return null;
+        var z_plane: usize = std.fmt.parseInt(usize, z_plane_string, 10) catch return null;
+        var plane_count_string: []const u8 = xml_tiff_data.getAttribute("PlaneCount") orelse return null;
+        plane_count = std.fmt.parseInt(i16, plane_count_string, 10) catch return null;
+
+        if (ifd < n_IFDs) { // valid IFD
+            valid_IFDs += 1;
+            plane_outer[z_plane][chan] = full_resolution_dirs.items[ifd];
+        } else {
+            if (plane_count == size_C_planes and size_Z == 1) {
+                var c_plane: usize = 0;
+                while (c_plane < size_C_planes) : (c_plane += 1) {
+                    plane_outer[0][c_plane] = full_resolution_dirs.items[ifd + c_plane];
+                }
+                valid_IFDs += size_C_planes;
+            } else {
+                if (plane_count == size_Z and size_C_planes == 1) {
+                    var z: usize = 0;
+                    while (z < size_Z) : (z += 1) {
+                        plane_outer[z][0] = full_resolution_dirs.items[ifd + z];
+                    }
+                    valid_IFDs += size_C_planes;
+                }
+            }
         }
     }
 
-    return OMETIFFMetadata{};
+    // Handle Plane info to get exposure time
+    // Only for Z==0 and T==0 Ke platform cannot handle
+    // metadata for other planes yet
+    var xml_planes = pixels.findChildrenByTag("Plane");
+
+    while (xml_planes.next()) |xml_plane| {
+        var exposure_time: []const u8 = xml_plane.getAttribute("ExposureTime") orelse "";
+        var exposure_time_unit: []const u8 = xml_plane.getAttribute("ExposureTimeUnit") orelse "";
+
+        var the_t_string: []const u8 = xml_plane.getAttribute("TheT") orelse return null;
+        var the_t: i16 = std.fmt.parseInt(i16, the_t_string, 10) catch return null;
+        var the_z_string: []const u8 = xml_plane.getAttribute("TheZ") orelse return null;
+        var the_z: i16 = std.fmt.parseInt(i16, the_z_string, 10) catch return null;
+        var the_c_string: []const u8 = xml_plane.getAttribute("TheC") orelse return null;
+        var the_c: usize = std.fmt.parseInt(usize, the_c_string, 10) catch return null;
+
+        // only collect exposure time for z== 0
+        if (the_t == 0 and the_z == 0) {
+            channel_list.items[the_c].exposureTime = exposure_time;
+            channel_list.items[the_c].exposureTimeUnit = exposure_time_unit;
+        }
+    }
+
+    // try to handle invalid ome-tiffs with no TiffData info in XML
+    // by assuming the obvious order
+    // requires  samplesPerPixel = 1
+    if (valid_IFDs == 0 and n_IFDs == size_C_planes * size_Z) {
+        valid_IFDs = n_IFDs;
+
+        var valid_ifd: u16 = 0;
+        var zz: u16 = 0;
+        while (zz < size_Z) : (zz += 1) {
+            var cc: u16 = 0;
+            while (cc < size_C_planes) : (cc += 1) {
+                plane_outer[zz][cc] = full_resolution_dirs.items[valid_ifd];
+                valid_ifd += 1;
+            }
+        }
+    }
+
+    if (n_IFDs != valid_IFDs) {
+        std.debug.print("Unsupported XML values in OME-tiff\n", .{});
+        std.debug.print("Found {d} planes in OME-XML! Expected {d}\n", .{ valid_IFDs, n_IFDs });
+        return null;
+    }
+
+    metadata.size = ifd0.size;
+    metadata.size.depth = size_Z;
+    metadata.blocksize = ifd0.blocksize;
+
+    // get resolution from tiff (required for some  Ultivue tiffs)
+    if (ifd0.xresolution > 0 and ifd0.yresolution > 0) {
+        switch (ifd0.resolutionUnit) {
+            c.RESUNIT_NONE => {}, // do nothing with unitless value (i.e. pixelsize_ == 0)
+            c.RESUNIT_INCH => {
+                metadata.pixelsize[0] = 25400.0 / ifd0.xresolution;
+                metadata.pixelsize[1] = 25400.0 / ifd0.yresolution;
+            },
+            c.RESUNIT_CENTIMETER => {
+                metadata.pixelsize[0] = 10000.0 / ifd0.xresolution;
+                metadata.pixelsize[1] = 10000.0 / ifd0.yresolution;
+            },
+            else => {},
+        }
+    }
+
+    // Now override for genuine OME-tiffs
+    // TBD Handle other units
+    if (std.mem.eql(u8, unit_X, "pixel") or std.mem.eql(u8, unit_X, "nm") or std.mem.eql(u8, unit_X, "µm") or std.mem.eql(u8, unit_X, "mm")) {
+        switch (unit_X[0]) {
+            'm' => metadata.pixelsize[0] = physical_size_X * 1000.0,
+            'n' => metadata.pixelsize[0] = physical_size_X / 1000.0,
+            else => metadata.pixelsize[0] = physical_size_X,
+        }
+    } else if (builtin.mode == std.builtin.Mode.Debug) {
+        std.debug.print("Unrecognised pixel sizeX units\n", .{});
+    }
+
+    if (std.mem.eql(u8, unit_Y, "pixel") or std.mem.eql(u8, unit_Y, "nm") or std.mem.eql(u8, unit_Y, "µm") or std.mem.eql(u8, unit_Y, "mm")) {
+        switch (unit_Y[0]) {
+            'm' => metadata.pixelsize[1] = physical_size_Y * 1000.0,
+            'n' => metadata.pixelsize[1] = physical_size_Y / 1000.0,
+            else => metadata.pixelsize[1] = physical_size_Y,
+        }
+    } else if (builtin.mode == std.builtin.Mode.Debug) {
+        std.debug.print("Unrecognised pixel sizeY units\n", .{});
+    }
+
+    if (std.mem.eql(u8, unit_Z, "pixel") or std.mem.eql(u8, unit_Z, "nm") or std.mem.eql(u8, unit_Z, "µm") or std.mem.eql(u8, unit_Z, "mm")) {
+        switch (unit_Z[0]) {
+            'm' => metadata.pixelsize[2] = physical_size_Z * 1000.0,
+            'n' => metadata.pixelsize[2] = physical_size_Z / 1000.0,
+            else => metadata.pixelsize[2] = physical_size_Z,
+        }
+    } else if (builtin.mode == std.builtin.Mode.Debug) {
+        std.debug.print("Unrecognised pixel sizeZ units\n", .{});
+    }
+
+    metadata.imageFormat = ImageFormat.OME;
+
+    return OMETIFFMetadata{
+        .channels = size_C,
+        .slices = size_Z,
+        .plane_map = plane_outer,
+        .metadata = metadata,
+    };
 }
 
 pub fn addBlock(self: OMETIFFMetadata, tif: *c.TIFF) !void {

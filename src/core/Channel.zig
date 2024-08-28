@@ -15,3 +15,6 @@ contrastMethod: []const u8,
 fluor: []const u8,
 
 emissionWavelength: []const u8,
+
+exposureTime: []const u8,
+exposureTimeUnit: []const u8,

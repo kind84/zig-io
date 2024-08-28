@@ -10,7 +10,8 @@ pub fn main() anyerror!void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    const path = "/home/paolo/Downloads/image-set-001/TCGA-60.ome.tiff";
+    // const path = "/home/paolo/Downloads/image-set-001/TCGA-60.ome.tiff";
+    const path = "/home/paolo/Downloads/pd-l1ktnslcS5.ome.tiff";
     var metadata = try TIFFMetadata.provide(allocator, path);
     try metadata.addBlock();
 

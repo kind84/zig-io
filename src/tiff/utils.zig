@@ -34,7 +34,7 @@ pub const TIFFDirectoryData = struct {
             .allocator = allocator,
             .format = 0,
             .nbits = 0,
-            .nsamples = 0,
+            .n_samples = 0,
             .planarConfig = 0,
             .compression = 0,
             .photometric = 0,
@@ -86,7 +86,7 @@ pub const TIFFDirectoryData = struct {
             tdd.format = c.SAMPLEFORMAT_UINT;
         }
         _ = c.TIFFGetField(tif, c.TIFFTAG_BITSPERSAMPLE, &tdd.nbits);
-        _ = c.TIFFGetField(tif, c.TIFFTAG_SAMPLESPERPIXEL, &tdd.nsamples);
+        _ = c.TIFFGetField(tif, c.TIFFTAG_SAMPLESPERPIXEL, &tdd.n_samples);
         _ = c.TIFFGetField(tif, c.TIFFTAG_PHOTOMETRIC, &tdd.photometric);
         _ = c.TIFFGetField(tif, c.TIFFTAG_PLANARCONFIG, &tdd.planarConfig);
         _ = c.TIFFGetField(tif, c.TIFFTAG_COMPRESSION, &tdd.compression);

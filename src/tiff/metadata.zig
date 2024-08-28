@@ -31,7 +31,7 @@ typ: i32,
 size: Size3(u32),
 blocksize: Size3(u32),
 planarConfig: u16,
-pixelsize: @Vector(3, f64),
+pixelsize: std.meta.Vector(3, f64),
 max: f64,
 channelsList: []Channel,
 imageFormat: ImageFormat,
@@ -44,7 +44,7 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         .size = undefined,
         .blocksize = undefined,
         .planarConfig = 0,
-        .pixelsize = undefined,
+        .pixelsize = @Vector(3, f64){},
         .max = 0,
         .channelsList = undefined,
         .imageFormat = undefined,
@@ -72,9 +72,6 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         _ = c.TIFFSetDirectory(tiff, 0);
 
         var dirs = dirs_array.toOwnedSlice();
-        std.debug.print("found dirs: {any}\n", .{dirs});
-
-        std.debug.print("{}\n", .{self.metadataType});
 
         var metadata: MetadataType = blk: {
             // try OME
