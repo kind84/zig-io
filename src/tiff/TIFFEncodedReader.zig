@@ -35,17 +35,17 @@ pub fn read(self: TIFFEncodedReader, tiffInfo: TIFFBlockInfo, dst: Mat, info: Bl
 }
 
 fn readTile(tiffInfo: TIFFBlockInfo, dst: Mat, _: BlockInfo) !void {
-    var tile_size = c.TIFFTileSize(tiffInfo.tif);
+    const tile_size = c.TIFFTileSize(tiffInfo.tif);
 
-    if (c.TIFFReadEncodedTile(tiffInfo.tif, tiffInfo.block, dst.data, tile_size) == 1) {
+    if (c.TIFFReadEncodedTile(tiffInfo.tif, tiffInfo.block, dst.data.ptr, tile_size) == 1) {
         return error.Internal;
     }
 }
 
 fn readStrip(tiffInfo: TIFFBlockInfo, dst: Mat, _: BlockInfo) !void {
-    var strip_size = c.TIFFStripSize(tiffInfo.tif);
+    const strip_size = c.TIFFStripSize(tiffInfo.tif);
 
-    if (c.TIFFReadEncodedStrip(tiffInfo.tif, tiffInfo.block, dst.data, strip_size) == 1) {
+    if (c.TIFFReadEncodedStrip(tiffInfo.tif, tiffInfo.block, dst.data.ptr, strip_size) == 1) {
         return error.Internal;
     }
 }

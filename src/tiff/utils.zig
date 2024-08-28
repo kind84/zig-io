@@ -64,7 +64,7 @@ pub const TIFFDirectoryData = struct {
             if (c.TIFFGetField(tif, c.TIFFTAG_TILEDEPTH, &tdd.blocksize.depth) == 1) {
                 tdd.blocksize.depth = 1;
             }
-            tdd.blocks = @intCast(u32, c.TIFFNumberOfTiles(tif));
+            tdd.blocks = @intCast(c.TIFFNumberOfTiles(tif));
         } else {
             std.debug.print("tiff file is not tiled\n", .{});
             tdd.blocksize.width = tdd.size.width;
@@ -72,7 +72,7 @@ pub const TIFFDirectoryData = struct {
                 tdd.blocksize.height = tdd.blocksize.width;
             }
             tdd.blocksize.depth = 1; // strip are flat
-            tdd.blocks = @intCast(u32, c.TIFFNumberOfStrips(tif));
+            tdd.blocks = @intCast(c.TIFFNumberOfStrips(tif));
         }
 
         // We define the size depth by the blocksize's one
@@ -94,14 +94,14 @@ pub const TIFFDirectoryData = struct {
             tdd.xresolution = res;
         } else {
             // tdd.xresolution = -std::numeric_limits<double>::max();
-            tdd.xresolution = -std.math.f64_max;
+            tdd.xresolution = -std.math.floatMax(f32);
         }
 
         if (c.TIFFGetField(tif, c.TIFFTAG_YRESOLUTION, &res) == 1) {
             tdd.yresolution = res;
         } else {
             // tdd.yresolution = -std::numeric_limits<double>::max();
-            tdd.yresolution = -std.math.f64_max;
+            tdd.yresolution = -std.math.floatMax(f32);
         }
 
         // Get the resolution unit
@@ -113,13 +113,13 @@ pub const TIFFDirectoryData = struct {
         var desc: [*:0]const u8 = &[_:0]u8{};
         std.debug.print("reading tiff file description\n", .{});
         if (c.TIFFGetField(tif, c.TIFFTAG_IMAGEDESCRIPTION, &desc) == 1) {
-            var description = std.mem.span(desc);
+            const description = std.mem.span(desc);
 
             // if kept on the stack, the description gets jammed once the
             // directory data gets moved into the heap in the tiff metadata
             // array.
-            var heap_description = try allocator.alloc(u8, description.len);
-            std.mem.copy(u8, heap_description, description);
+            const heap_description = try allocator.alloc(u8, description.len);
+            @memcpy(heap_description, description);
             tdd.description = heap_description;
         }
 
@@ -146,21 +146,30 @@ pub fn computeMatType(
     if (nSamples < 1) {
         return error.BadArg;
     }
-    if (nSamples < 3 and photometric == @intCast(u16, c.PHOTOMETRIC_RGB)) {
+    const ph_rgb: u16 = @intCast(c.PHOTOMETRIC_RGB);
+    if (nSamples < 3 and photometric == ph_rgb) {
         return error.BadArg;
     }
-    if (nSamples != 3 and photometric == @intCast(u16, c.PHOTOMETRIC_YCBCR)) {
+    const ph_ycbcr: u16 = @intCast(c.PHOTOMETRIC_YCBCR);
+    if (nSamples != 3 and photometric == ph_ycbcr) {
         return error.BadArg;
     }
-    if (nSamples != 1 and photometric == @intCast(u16, c.PHOTOMETRIC_PALETTE)) {
+    const ph_pal: u16 = @intCast(c.PHOTOMETRIC_PALETTE);
+    if (nSamples != 1 and photometric == ph_pal) {
         return error.BadArg;
     }
 
     // allow for multiple channels
-    var n_samples = nSamples * nChannels;
+    const n_samples = nSamples * nChannels;
 
+    const c_sampl_uint: u16 = @intCast(c.SAMPLEFORMAT_UINT);
+    const c_sampl_int: u16 = @intCast(c.SAMPLEFORMAT_INT);
+    const c_sampl_ieeeffp: u16 = @intCast(c.SAMPLEFORMAT_IEEEFP);
+    const c_sampl_void: u16 = @intCast(c.SAMPLEFORMAT_VOID);
+    const c_sampl_complexint: u16 = @intCast(c.SAMPLEFORMAT_COMPLEXINT);
+    const c_sampl_complexieeefp: u16 = @intCast(c.SAMPLEFORMAT_COMPLEXIEEEFP);
     switch (format) {
-        @intCast(u16, c.SAMPLEFORMAT_UINT) => {
+        c_sampl_uint => {
             switch (nBits) {
                 8 => {
                     switch (n_samples) {
@@ -184,7 +193,7 @@ pub fn computeMatType(
                 else => return error.UnsupportedFormat,
             }
         },
-        @intCast(u16, c.SAMPLEFORMAT_INT) => {
+        c_sampl_int => {
             switch (nBits) {
                 8 => {
                     switch (n_samples) {
@@ -216,7 +225,7 @@ pub fn computeMatType(
                 else => return error.UnsupportedFormat,
             }
         },
-        @intCast(u16, c.SAMPLEFORMAT_IEEEFP) => {
+        c_sampl_ieeeffp => {
             switch (nBits) {
                 32 => {
                     switch (n_samples) {
@@ -239,9 +248,9 @@ pub fn computeMatType(
                 else => return error.UnsupportedFormat,
             }
         },
-        @intCast(u16, c.SAMPLEFORMAT_VOID) => return error.UnsupportedFormat, // unspecified
-        @intCast(u16, c.SAMPLEFORMAT_COMPLEXINT) => return error.UnsupportedFormat, // not supported yet
-        @intCast(u16, c.SAMPLEFORMAT_COMPLEXIEEEFP) => return error.UnsupportedFormat, // not supported yet
+        c_sampl_void => return error.UnsupportedFormat, // unspecified
+        c_sampl_complexint => return error.UnsupportedFormat, // not supported yet
+        c_sampl_complexieeefp => return error.UnsupportedFormat, // not supported yet
         else => {
             // unable to find the correct OpenCV type using 'format', likely because the
             // tag is missing from the TIFF file. Return default type in function of the
@@ -290,26 +299,19 @@ pub fn computeMatType(
 }
 
 test "init" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
+    const allocator = std.testing.allocator;
 
     const path: []const u8 = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
 
-    var maybe_tif = c.TIFFOpen(path.ptr, "r8");
-    if (maybe_tif) |tiff| {
-        defer {
-            _ = c.TIFFClose(tiff);
-        }
+    const tiff = c.TIFFOpen(path.ptr, "r8") orelse unreachable;
+    defer {
+        _ = c.TIFFClose(tiff);
+    }
 
-        const tdd = try TIFFDirectoryData.init(allocator, tiff);
-        defer tdd.deinit();
+    const tdd = try TIFFDirectoryData.init(allocator, tiff);
+    defer tdd.deinit();
 
-        try std.testing.expectEqual(@as(u16, 8), tdd.nbits);
-        try std.testing.expectEqual(@as(u16, 3), tdd.n_samples);
-        try std.testing.expectEqual(@as(u16, 1), tdd.compression); // Compression None
-    } else unreachable;
+    try std.testing.expectEqual(@as(u16, 8), tdd.nbits);
+    try std.testing.expectEqual(@as(u16, 3), tdd.n_samples);
+    try std.testing.expectEqual(@as(u16, 1), tdd.compression); // Compression None
 }

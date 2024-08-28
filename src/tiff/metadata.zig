@@ -41,7 +41,7 @@ typ: ?MatType,
 size: Size3(u32),
 blocksize: Size3(u32),
 planarConfig: u16,
-pixelsize: std.meta.Vector(3, f64),
+pixelsize: @Vector(3, f64),
 max: f64,
 channelsList: []Channel,
 imageFormat: ImageFormat,
@@ -55,7 +55,7 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         .size = undefined,
         .blocksize = undefined,
         .planarConfig = 0,
-        .pixelsize = @Vector(3, f64){},
+        .pixelsize = @Vector(3, f64){ 0, 0, 0 },
         .max = 0,
         .channelsList = undefined,
         .imageFormat = undefined,
@@ -63,17 +63,17 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
     };
 
     std.debug.print("opening tiff file\n", .{});
-    var maybe_tif = c.TIFFOpen(path.ptr, "r8");
+    const maybe_tif = c.TIFFOpen(path.ptr, "r8");
     if (maybe_tif) |tiff| {
-        var n_dirs: c_int = c.TIFFNumberOfDirectories(tiff);
-        var size_dirs = @intCast(usize, n_dirs);
+        const n_dirs: c_int = c.TIFFNumberOfDirectories(tiff);
+        const size_dirs: usize = @intCast(n_dirs);
         std.debug.print("found {d} IFDs in tiff file\n", .{size_dirs});
         var dirs_array = try std.ArrayList(TIFFDirectoryData).initCapacity(allocator, size_dirs);
 
         var dir_no: usize = 0;
         while (true) : (dir_no += 1) {
             std.debug.print("reading IFD no {d}\n", .{dir_no});
-            var dir = try TIFFDirectoryData.init(allocator, tiff);
+            const dir = try TIFFDirectoryData.init(allocator, tiff);
             try dirs_array.append(dir);
             if (c.TIFFReadDirectory(tiff) == 0) break;
         }
@@ -81,9 +81,9 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         // reset directory index
         _ = c.TIFFSetDirectory(tiff, 0);
 
-        var dirs = dirs_array.toOwnedSlice();
+        const dirs = try dirs_array.toOwnedSlice();
 
-        var metadata: MetadataType = blk: {
+        const metadata: MetadataType = blk: {
             // try OME
             if (try OMETIFFMetadata.init(allocator, &self, dirs)) |m| {
                 std.debug.print("tiff file is OME-Tiff\n", .{});
@@ -117,12 +117,7 @@ pub fn addBlock(self: TIFFMetadata) ![]TIFFBlockInfo {
 }
 
 test "init" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
+    const allocator = std.testing.allocator;
 
     const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
     var meta = try init(allocator, path);
@@ -132,12 +127,7 @@ test "init" {
 }
 
 test "addBlock OME" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
+    const allocator = std.testing.allocator;
 
     const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
     var meta = try init(allocator, path);

@@ -28,7 +28,7 @@ pub fn main() anyerror!void {
     //            "Floating point data not yet supported!");
     // }
 
-    var num_channels = slide.channelList.len;
+    const num_channels = slide.channelList.len;
     var file_type: MatType = slide.depth();
 
     if (slide.isContiguous()) {
@@ -48,7 +48,7 @@ pub fn main() anyerror!void {
         if (slide.objective > 0.0) {
             std.debug.print("Slide Objective: {d}\n", .{slide.objective});
         }
-        if (@fabs(slide.focalPlaneMin - slide.focalPlaneMax) < 1e-9 or slide.slices() == 1) {
+        if (@abs(slide.focalPlaneMin - slide.focalPlaneMax) < 1e-9 or slide.slices() == 1) {
             std.debug.print("Slide focalPlaneMin: {d}\n", .{slide.focalPlaneMin});
             std.debug.print("Slide focalPlaneMax: {d}\n", .{slide.focalPlaneMax});
         }
@@ -57,8 +57,8 @@ pub fn main() anyerror!void {
     // std.debug.print("{any}\n", .{slide});
     var dst = try Mat.initEmpty(allocator, 1, 1, MatType.CV_8UC1);
     defer dst.deinit();
-    var region = Rect3(usize).init(0, 0, 0, 100, 100, 1);
-    var channel: usize = 1;
+    const region = Rect3(usize).init(0, 0, 0, 100, 100, 1);
+    const channel: usize = 1;
     try slide.getRegion(allocator, region, channel, &dst);
     std.debug.print("{any}\n", .{dst});
 }

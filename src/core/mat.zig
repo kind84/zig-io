@@ -9,11 +9,11 @@ const auto_step: usize = 0;
 pub const Mat = struct {
     allocator: std.mem.Allocator,
     typ: MatType,
-    data: [*]u8,
+    data: []u8,
     dims: u8,
     rows: usize,
     cols: usize,
-    size: []usize,
+    size: []const usize,
     step: [2]usize,
 
     // TODO switch to dims & size args
@@ -21,12 +21,12 @@ pub const Mat = struct {
     pub fn initEmpty(allocator: std.mem.Allocator, rows: usize, cols: usize, typ: MatType) !Mat {
         const esz: usize = typ.elemSize();
         const data_size = @as(usize, rows) * @as(usize, cols) * esz;
-        var data = try allocator.alloc(u8, data_size);
+        const data = try allocator.alloc(u8, data_size);
 
         return Mat{
             .allocator = allocator,
             .typ = typ,
-            .data = data.ptr,
+            .data = data,
             .dims = 2,
             .rows = rows,
             .cols = cols,
@@ -36,10 +36,10 @@ pub const Mat = struct {
     }
 
     // modules/core/src/matrix.cpp L419
-    pub fn initFull(allocator: std.mem.Allocator, rows: usize, cols: usize, typ: MatType, data: [*]u8, step: ?usize) !Mat {
+    pub fn initFull(allocator: std.mem.Allocator, rows: usize, cols: usize, typ: MatType, data: []u8, step: ?usize) !Mat {
         const esz: usize = typ.elemSize();
         const min_step: usize = @as(usize, cols) * esz;
-        var stp: usize = step orelse min_step;
+        const stp: usize = step orelse min_step;
 
         if (stp != min_step) {
             std.debug.assert(stp >= min_step);
@@ -71,8 +71,9 @@ pub const Mat = struct {
     pub fn subMat(self: Mat, roi: Rect(usize)) Mat {
         std.debug.assert(self.dims <= 2);
 
-        var esz = self.elemSize();
-        var data = self.data + (roi.y * self.step[0]) + (roi.x * esz);
+        const esz = self.elemSize();
+        var data: []u8 = undefined;
+        data.ptr = self.data.ptr + (roi.y * self.step[0]) + (roi.x * esz);
 
         return Mat{
             .allocator = self.allocator,
@@ -156,18 +157,13 @@ pub const MatType = enum(u8) {
     }
 
     pub fn elemSize(self: MatType) usize {
-        var chans = self.channels();
+        const chans = self.channels();
         return self.size() * chans;
     }
 };
 
 test "initEmpty" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
+    const allocator = std.testing.allocator;
 
     var mat = try Mat.initEmpty(allocator, 4, 4, MatType.CV_8UC1);
     defer mat.deinit();
@@ -180,14 +176,9 @@ test "initEmpty" {
 }
 
 test "initFull" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
-    var data: []u8 = try allocator.alloc(u8, 16);
-    var data_slice = &[_]u8{
+    const allocator = std.testing.allocator;
+    const data: []u8 = try allocator.alloc(u8, 16);
+    const data_slice = &[_]u8{
         1, 1, 1, 1,
         2, 2, 2, 2,
         3, 3, 3, 3,
@@ -206,14 +197,9 @@ test "initFull" {
 }
 
 test "subMat" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
-    var data: []u8 = try allocator.alloc(u8, 16);
-    var data_slice = &[_]u8{
+    const allocator = std.testing.allocator;
+    const data: []u8 = try allocator.alloc(u8, 16);
+    const data_slice = &[_]u8{
         1, 1, 1, 1,
         2, 2, 2, 2,
         3, 3, 3, 3,

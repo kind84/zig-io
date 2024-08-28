@@ -19,12 +19,12 @@ pub fn Rect(comptime Type: type) type {
         }
 
         pub fn intersect(a: Self, b: Self) ?Self {
-            var x = std.math.max(a.x, b.x);
-            var y = std.math.max(a.y, b.y);
-            var width = std.math.min(a.x + a.width, b.x + b.width) - x;
-            var height = std.math.min(a.y + a.height, b.y + b.height) - y;
+            const x = @max(a.x, b.x);
+            const y = @max(a.y, b.y);
+            const width = @min(a.x + a.width, b.x + b.width) - x;
+            const height = @min(a.y + a.height, b.y + b.height) - y;
 
-            var region = Self{
+            const region = Self{
                 .x = x,
                 .y = y,
                 .width = if (width <= 0) width else return null,
@@ -63,14 +63,14 @@ pub fn Rect3(comptime Type: type) type {
         }
 
         pub fn intersect(a: Self, b: Self) ?Self {
-            var x = std.math.max(a.x, b.x);
-            var y = std.math.max(a.y, b.y);
-            var z = std.math.max(a.z, b.z);
-            var width = std.math.min(a.x + a.width, b.x + b.width) - x;
-            var height = std.math.min(a.y + a.height, b.y + b.height) - y;
-            var depth = std.math.min(a.z + a.depth, b.z + b.depth) - z;
+            const x = @max(a.x, b.x);
+            const y = @max(a.y, b.y);
+            const z = @max(a.z, b.z);
+            const width = @min(a.x + a.width, b.x + b.width) - x;
+            const height = @min(a.y + a.height, b.y + b.height) - y;
+            const depth = @min(a.z + a.depth, b.z + b.depth) - z;
 
-            var region = Self{
+            const region = Self{
                 .x = x,
                 .y = y,
                 .z = z,

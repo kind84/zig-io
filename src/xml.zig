@@ -54,8 +54,9 @@ pub const Element = struct {
         return self.findChildrenByTag(tag).next();
     }
 
-    pub fn findChildrenByTag(self: *Element, tag: []const u8) FindChildrenByTagIterator {
-        return .{ .inner = self.children.iterator(0), .tag = tag };
+    pub fn findChildrenByTag(self: *Element, tag: []const u8) *FindChildrenByTagIterator {
+        var it = FindChildrenByTagIterator{ .inner = self.children.iterator(0), .tag = tag };
+        return &it;
     }
 
     pub const FindChildrenByTagIterator = struct {
@@ -190,7 +191,7 @@ const ParseContext = struct {
             begin = prev_nl + 1;
         }
 
-        var end = mem.indexOfScalarPos(u8, self.source, self.offset, '\n') orelse self.source.len;
+        const end = mem.indexOfScalarPos(u8, self.source, self.offset, '\n') orelse self.source.len;
         return self.source[begin..end];
     }
 };
@@ -550,7 +551,7 @@ fn dupeAndUnescape(alloc: Allocator, text: []const u8) ![]const u8 {
         }
     }
 
-    return alloc.shrink(str, j);
+    return alloc.realloc(str, j);
 }
 
 test "dupeAndUnescape" {

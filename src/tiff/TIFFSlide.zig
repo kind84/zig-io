@@ -13,7 +13,7 @@ const c = @import("./metadata.zig").C;
 pub const TIFFSlide = @This();
 
 imageFormat: ImageFormat,
-metadata: []TIFFMetadata,
+metadata: []const TIFFMetadata,
 blockInfos: []TIFFBlockInfo,
 slideLayout: Layout,
 
@@ -27,7 +27,7 @@ compression: u16,
 
 reader: TIFFEncodedReader,
 
-pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
+pub fn init(path: []const u8, allocator: std.mem.Allocator) !*TIFFSlide {
     var tiff_slide = TIFFSlide{
         .slideLayout = undefined,
         .imageFormat = undefined,
@@ -42,10 +42,10 @@ pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
 
     try tiff_slide.open(path, allocator);
 
-    return tiff_slide;
+    return &tiff_slide;
 }
 
-pub fn deinit(self: *TIFFSlide) void {
+pub fn deinit(self: *const TIFFSlide) void {
     for (self.metadata) |*m| {
         m.*.deinit();
     }
@@ -55,8 +55,8 @@ pub fn slide(self: *TIFFSlide) Slide {
     return Slide.init(self, self.imageFormat, open, readBlockFromFile, layout);
 }
 
-pub fn layout(self: *TIFFSlide) Layout {
-    return self.slideLayout;
+pub fn layout(self: *TIFFSlide) *Layout {
+    return &self.slideLayout;
 }
 
 pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !void {
@@ -74,12 +74,13 @@ pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !v
     }
 
     std.debug.print("{any}\n", .{self.blockInfos});
-    var tif = self.blockInfos[0].tif;
+    const tif = self.blockInfos[0].tif;
     if (c.TIFFCurrentDirectory(tif) != self.blockInfos[0].dir) {
-        _ = c.TIFFSetDirectory(tif, @intCast(c_ushort, self.blockInfos[0].dir));
+        const c_dir: c_ushort = @intCast(self.blockInfos[0].dir);
+        _ = c.TIFFSetDirectory(tif, c_dir);
     }
 
-    var tiff_dir_data = try TIFFDirectoryData.init(allocator, tif);
+    const tiff_dir_data = try TIFFDirectoryData.init(allocator, tif);
 
     if (c.TIFFIsTiled(tif) == 1) {
         if (tiff_dir_data.compression == c.COMPRESSION_JPEG and tiff_dir_data.photometric == c.PHOTOMETRIC_YCBCR) {
@@ -112,7 +113,10 @@ fn openFromSingleFile(
     allocator: std.mem.Allocator,
 ) !void {
     var m = try TIFFMetadata.init(allocator, path);
-    self.metadata = &[_]TIFFMetadata{m};
+    var end: usize = 0;
+    end += 1;
+    const m_data = &[_]TIFFMetadata{m};
+    self.metadata = m_data[0..end];
     self.imageFormat = m.imageFormat;
 
     var lout: Layout = undefined;
@@ -133,22 +137,18 @@ pub fn readBlockFromFile(self: *TIFFSlide, info: BlockInfo, dst: Mat) !void {
         return error.InvalidBlockIndex;
     }
 
-    var tiff_info = self.blockInfos[info.block];
+    const tiff_info = self.blockInfos[info.block];
 
     if (c.TIFFCurrentDirectory(tiff_info.tif) != tiff_info.dir) {
-        _ = c.TIFFSetDirectory(tiff_info.tif, @intCast(c_ushort, tiff_info.dir));
+        const c_dir: c_ushort = @intCast(tiff_info.dir);
+        _ = c.TIFFSetDirectory(tiff_info.tif, c_dir);
     }
 
     try self.reader.read(tiff_info, dst, info);
 }
 
 test "init" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    defer {
-        const leaked = gpa.deinit();
-        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
-    }
+    const allocator = std.testing.allocator;
 
     const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
 
