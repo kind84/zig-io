@@ -6,6 +6,7 @@ const Layout = @import("./layout.zig").Layout;
 const Rect = @import("rect.zig").Rect;
 const Rect3 = @import("rect.zig").Rect3;
 const Mat = @import("mat.zig").Mat;
+const MatType = @import("mat.zig").MatType;
 // const Metadata = @import("./metadata.zig").Metadata;
 const TIFFSlide = @import("../tiff/TIFFSlide.zig");
 const TIFFMetadata = @import("../tiff/metadata.zig").TIFFMetadata;
@@ -21,7 +22,7 @@ pub const Slide = struct {
     // },
     // metadata: Metadata,
     imageFormat: ImageFormat,
-    typ: i32,
+    typ: MatType,
     objective: f64,
     focalPlaneMin: f64,
     focalPlaneMax: f64,
@@ -104,7 +105,7 @@ pub const Slide = struct {
     }
 
     pub fn getRegion(self: Slide, region: Rect3(u32), channel: u32, dst: *Mat) !void {
-        var range = self.layout.getIntersect(region, &channel);
+        var range: []*BlockInfo = self.layout.getIntersect(region, &channel);
         if (std.meta.eql(range.begin, range.end)) return;
 
         var dim: u2 = 0;
@@ -121,44 +122,35 @@ pub const Slide = struct {
             sz[2] = region.width;
         }
 
+        var typ = if (self.isContiguous()) self.typ else self.depth();
+
         for (range) |info| {
-            try self.readBlockFromFile(info, dst);
+            var src = Mat.initEmpty(info.rect.height, info.rect.width, typ);
+            try self.readBlockFromFile(info, src);
+            try self.copyTo(info.rect, region, src, dst);
         }
     }
 
-    pub fn depth(self: Slide) i32 {
-        _ = self;
+    pub fn depth(self: Slide) MatType {
         // TODO
-        // return CV_MAT_DEPTH(self.typ);
-        return 0;
+        _ = self;
+        return MatType.CV_8SC1;
     }
 
-    pub fn slices(self: Slide) i32 {
-        _ = self;
-        // TODO
-        // return self.layout.size.depth;
-        return 1;
+    pub fn slices(self: Slide) u32 {
+        return self.layout.size.depth;
     }
 
-    pub fn rows(self: Slide) i32 {
-        _ = self;
-        // TODO
-        // return self.layout.size.height;
-        return 1;
+    pub fn rows(self: Slide) u32 {
+        return self.layout.size.height;
     }
 
-    pub fn cols(self: Slide) i32 {
-        _ = self;
-        // TODO
-        // return self.layout.size.width;
-        return 1;
+    pub fn cols(self: Slide) u32 {
+        return self.layout.size.width;
     }
 
     pub fn isContiguous(self: Slide) bool {
-        _ = self;
-        // TODO
-        // self.layout.isContiguous();
-        return false;
+        return self.layout.contiguous;
     }
 
     fn isValidChannelSelection(channel: u32) bool {

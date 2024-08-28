@@ -1,5 +1,6 @@
 const std = @import("std");
 const Rect = @import("rect.zig").Rect;
+const Size3 = @import("size.zig").Size3;
 
 pub const Mat = struct {
     typ: MatType,
@@ -12,8 +13,22 @@ pub const Mat = struct {
 
     const auto_step: usize = 0;
 
+    // TODO switch to dims & size args
+    // modules/core/src/matrix.cpp L371
+    pub fn initEmpty(rows: u32, cols: u32, typ: MatType) !Mat {
+        return Mat{
+            .typ = typ,
+            .data = undefined,
+            .dims = 2,
+            .rows = rows,
+            .cols = cols,
+            .size = &[_]u32{rows},
+            .step = &[_]usize{},
+        };
+    }
+
     // modules/core/src/matrix.cpp L419
-    pub fn init(rows: u32, cols: u32, typ: MatType, data: [*]const u8, step: ?usize) !Mat {
+    pub fn initFull(rows: u32, cols: u32, typ: MatType, data: [*]const u8, step: ?usize) !Mat {
         var stp = step orelse auto_step;
 
         var esz = typ.elemSize();
@@ -34,7 +49,7 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
-            .size = &[_]u32{},
+            .size = &[_]u32{rows},
             .step = &[_]usize{ stp, esz },
         };
     }
@@ -65,8 +80,23 @@ pub const Mat = struct {
     pub fn elemSize(self: Mat) usize {
         return self.typ.elemSize();
     }
+
+    fn create(self: Mat, dims: usize, mat_size: Size3(u32), typ: MatType) !void {
+        // TODO
+        _ = self;
+        _ = dims;
+        _ = mat_size;
+        _ = typ;
+    }
 };
 
+/// porting of OpenCV mat types. This enum represents the possible types a Mat
+/// instance can have. Its composition is:
+/// `CV_[bits-per-element][numeral-type]C[number-of-channels]`.
+/// Values for `numeral-type` are:
+/// - U = unsigned integer
+/// - S = signed integer
+/// - F = floating point
 pub const MatType = enum(u8) {
     CV_8UC1,
     CV_8UC2,
@@ -121,7 +151,7 @@ test "subMat" {
         3, 3, 3, 3,
         4, 4, 4, 4,
     };
-    const mat = try Mat.init(4, 4, MatType.CV_8UC1, &data, null);
+    const mat = try Mat.initFull(4, 4, MatType.CV_8UC1, &data, null);
 
     const rect = Rect(u32).init(0, 1, 2, 2);
     const sub = mat.subMat(rect);
