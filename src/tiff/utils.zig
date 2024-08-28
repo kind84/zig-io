@@ -1,5 +1,5 @@
 const std = @import("std");
-const Size3 = @import("../core/size3.zig").Size3;
+const Size3 = @import("../core/size.zig").Size3;
 const c = @import("metadata.zig").C;
 // const c = @cImport({
 //     @cInclude("tiff.h");
@@ -20,12 +20,12 @@ pub const TIFFDirectoryData = struct {
     compression: u16,
     photometric: u16,
     resolutionUnit: u16,
-    size: Size3(i32),
-    blocksize: Size3(i32),
-    blocks: i32,
-    subFileType: i32,
-    xresolution: f64,
-    yresolution: f64,
+    size: Size3(u32),
+    blocksize: Size3(u32),
+    blocks: u32,
+    subFileType: u32,
+    xresolution: f32,
+    yresolution: f32,
     description: []const u8,
 
     pub fn init(tif: *c.TIFF) TIFFDirectoryData {
@@ -62,25 +62,25 @@ pub const TIFFDirectoryData = struct {
             std.debug.print("tiff file is tiled\n", .{});
             _ = c.TIFFGetField(tif, c.TIFFTAG_TILEWIDTH, &tdd.blocksize.width);
             _ = c.TIFFGetField(tif, c.TIFFTAG_TILELENGTH, &tdd.blocksize.height);
-            if (c.TIFFGetField(tif, c.TIFFTAG_TILEDEPTH, &tdd.blocksize.depth) == 0) {
+            if (c.TIFFGetField(tif, c.TIFFTAG_TILEDEPTH, &tdd.blocksize.depth) == 1) {
                 tdd.blocksize.depth = 1;
             }
-            tdd.blocks = @intCast(i32, c.TIFFNumberOfTiles(tif));
+            tdd.blocks = @intCast(u32, c.TIFFNumberOfTiles(tif));
         } else {
             std.debug.print("tiff file is not tiled\n", .{});
             tdd.blocksize.width = tdd.size.width;
-            if (c.TIFFGetField(tif, c.TIFFTAG_ROWSPERSTRIP, &tdd.blocksize.height) == 0) {
+            if (c.TIFFGetField(tif, c.TIFFTAG_ROWSPERSTRIP, &tdd.blocksize.height) == 1) {
                 tdd.blocksize.height = tdd.blocksize.width;
             }
             tdd.blocksize.depth = 1; // strip are flat
-            tdd.blocks = @intCast(i32, c.TIFFNumberOfStrips(tif));
+            tdd.blocks = @intCast(u32, c.TIFFNumberOfStrips(tif));
         }
 
         // We define the size depth by the blocksize's one
         tdd.size.depth = tdd.blocksize.depth;
 
         // Get the CV type
-        if (c.TIFFGetField(tif, c.TIFFTAG_SAMPLEFORMAT, &tdd.format) == 0) {
+        if (c.TIFFGetField(tif, c.TIFFTAG_SAMPLEFORMAT, &tdd.format) == 1) {
             tdd.format = c.SAMPLEFORMAT_UINT;
         }
         _ = c.TIFFGetField(tif, c.TIFFTAG_BITSPERSAMPLE, &tdd.nbits);
@@ -91,14 +91,14 @@ pub const TIFFDirectoryData = struct {
 
         // Get the resolution
         var res: f32 = 0;
-        if (c.TIFFGetField(tif, c.TIFFTAG_XRESOLUTION, &res) == 0) {
+        if (c.TIFFGetField(tif, c.TIFFTAG_XRESOLUTION, &res) == 1) {
             tdd.xresolution = res;
         } else {
             // tdd.xresolution = -std::numeric_limits<double>::max();
             tdd.xresolution = -std.math.f64_max;
         }
 
-        if (c.TIFFGetField(tif, c.TIFFTAG_YRESOLUTION, &res) == 0) {
+        if (c.TIFFGetField(tif, c.TIFFTAG_YRESOLUTION, &res) == 1) {
             tdd.yresolution = res;
         } else {
             // tdd.yresolution = -std::numeric_limits<double>::max();
@@ -106,17 +106,18 @@ pub const TIFFDirectoryData = struct {
         }
 
         // Get the resolution unit
-        if (c.TIFFGetField(tif, c.TIFFTAG_RESOLUTIONUNIT, &tdd.resolutionUnit) == 0) {
+        if (c.TIFFGetField(tif, c.TIFFTAG_RESOLUTIONUNIT, &tdd.resolutionUnit) == 1) {
             tdd.resolutionUnit = c.RESUNIT_NONE;
         }
 
         // Get the description
-        var desc: ?[*:0]const u8 = null;
+        var desc: [*:0]const u8 = &[_:0]u8{};
         std.debug.print("reading tiff file description\n", .{});
-        if (c.TIFFGetField(tif, c.TIFFTAG_IMAGEDESCRIPTION, &desc) == 0) {
-            if (desc) |d| {
-                tdd.description = std.mem.span(d);
-            }
+        if (c.TIFFGetField(tif, c.TIFFTAG_IMAGEDESCRIPTION, &desc) == 1) {
+            // if (desc) |d| {
+            std.debug.print("{s}\n", .{desc});
+            tdd.description = std.mem.span(desc);
+            // }
         }
         std.debug.print("reading tiff file description done\n", .{});
 

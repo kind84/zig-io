@@ -1,9 +1,10 @@
 const std = @import("std");
 const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
 const OMETIFFMetadata = @import("metadata_ome.zig");
+const GenericTIFFMetadata = @import("metadata_generic.zig");
 const Channel = @import("../core/Channel.zig");
 const ImageFormat = @import("../core/Slide.zig").ImageFormat;
-const Size3 = @import("../core/size3.zig").Size3;
+const Size3 = @import("../core/size.zig").Size3;
 const c = @cImport({
     @cInclude("tiffio.h");
     @cInclude("tiff.h");
@@ -13,10 +14,12 @@ pub const C = c;
 
 const MetadataType = union(enum) {
     OME: OMETIFFMetadata,
+    Generic: GenericTIFFMetadata,
 
     fn addBlock(self: MetadataType, tif: *c.TIFF) !void {
         return switch (self) {
             .OME => |m| m.addBlock(tif),
+            .Generic => |m| m.addBlock(tif),
         };
     }
 };
@@ -25,8 +28,8 @@ pub const TIFFMetadata = @This();
 
 tif: *c.TIFF,
 typ: i32,
-size: Size3(i32),
-blocksize: Size3(i32),
+size: Size3(u32),
+blocksize: Size3(u32),
 planarConfig: u16,
 pixelsize: @Vector(3, f64),
 max: f64,
@@ -59,9 +62,9 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         var dir_no: usize = 0;
         while (true) : (dir_no += 1) {
             std.debug.print("reading IFD no {d}\n", .{dir_no});
-            if (c.TIFFReadDirectory(tiff) == 0) break;
             var dir = TIFFDirectoryData.init(tiff);
             try dirs_array.append(dir);
+            if (c.TIFFReadDirectory(tiff) == 0) break;
         }
 
         // reset directory index
@@ -70,12 +73,25 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         var dirs = dirs_array.toOwnedSlice();
         std.debug.print("found dirs: {any}\n", .{dirs});
 
-        // try OME
-        if (OMETIFFMetadata.init(&self, dirs)) |m| {
-            std.debug.print("tiff file is OME-Tiff\n", .{});
-            self.metadataType = MetadataType{ .OME = m };
-        }
+        std.debug.print("{}\n", .{self.metadataType});
 
+        var metadata: MetadataType = blk: {
+            // try OME
+            if (try OMETIFFMetadata.init(allocator, &self, dirs)) |m| {
+                std.debug.print("tiff file is OME-Tiff\n", .{});
+                break :blk MetadataType{ .OME = m };
+            }
+
+            // try generic
+            if (try GenericTIFFMetadata.init(allocator, &self, dirs)) |m| {
+                std.debug.print("tiff file is Generic Tiff\n", .{});
+                break :blk MetadataType{ .Generic = m };
+            }
+
+            break :blk undefined;
+        };
+
+        self.metadataType = metadata;
         self.tif = tiff;
     }
     return self;
