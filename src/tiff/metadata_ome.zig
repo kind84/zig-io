@@ -396,18 +396,18 @@ pub fn deinit(self: OMETIFFMetadata) void {
 pub fn addBlock(self: OMETIFFMetadata, allocator: std.mem.Allocator) ![]TIFFBlockInfo {
     var m = self.metadata;
 
-    var nbz: u32 = m.size.depth / m.blocksize.depth;
+    var nbz: usize = m.size.depth / m.blocksize.depth;
     var nbc: usize = 0;
     if (m.planarConfig == @intCast(u16, c.PLANARCONFIG_CONTIG)) {
         nbc = 1;
     } else if (m.typ) |typ| {
         nbc = typ.channels();
     }
-    var nbb: u32 = ((1 + ((m.size.width - 1) / m.blocksize.width)) *
+    var nbb: usize = ((1 + ((m.size.width - 1) / m.blocksize.width)) *
         (1 + ((m.size.height - 1) / m.blocksize.height)));
 
-    std.debug.print("{d}\n", .{@as(usize, nbb * nbc * nbz)});
-    var block_infos = try std.ArrayList(TIFFBlockInfo).initCapacity(allocator, @as(usize, nbb * nbc * nbz));
+    std.debug.print("{d}\n", .{nbb * nbc * nbz});
+    var block_infos = try std.ArrayList(TIFFBlockInfo).initCapacity(allocator, nbb * nbc * nbz);
     var block: u32 = 0;
     var zz: usize = 0;
     while (zz < nbz) : (zz += 1) {

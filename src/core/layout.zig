@@ -30,13 +30,12 @@ const Block = union(enum) {
 };
 
 pub const BlockInfo = struct {
-    block: u32,
-    channel: u32,
-    rect: Rect3(u32),
+    block: usize,
+    channel: usize,
+    rect: Rect3(usize),
 };
 
 pub const Layout = struct {
-    allocator: std.mem.Allocator,
     grid: Grid,
     placement: Placement,
     typ: LayoutType,
@@ -44,25 +43,24 @@ pub const Layout = struct {
     coords: ?[]Point3(f64),
     gridsize: Size3(u32),
     block: Block,
-    blocks: u32,
-    channels: u32,
-    whc: u32,
-    wh: u32,
-    cache: std.ArrayList(*BlockInfo),
+    blocks: usize,
+    channels: usize,
+    whc: usize,
+    wh: usize,
+    cache: std.ArrayList(BlockInfo),
     contiguous: bool,
 
     pub fn initRegularNoOverlap(
         allocator: std.mem.Allocator,
         size: Size3(u32),
         blocksize: Size3(u32),
-        channels: u32,
+        channels: usize,
     ) Layout {
         var gridsize_width = 1 + ((size.width - 1) / blocksize.width);
         var gridsize_height = 1 + ((size.height - 1) / blocksize.height);
         var gridsize_depth = 1 + ((size.depth - 1) / blocksize.depth);
 
         return Layout{
-            .allocator = allocator,
             .grid = Grid.Regular,
             .placement = Placement.NoOverlap,
             .typ = LayoutType.RegularNoOverlap,
@@ -78,7 +76,7 @@ pub const Layout = struct {
             .channels = channels,
             .whc = gridsize_width * gridsize_height * channels,
             .wh = gridsize_width * gridsize_height,
-            .cache = std.ArrayList(*BlockInfo).init(allocator),
+            .cache = std.ArrayList(BlockInfo).init(allocator),
             .contiguous = channels == 0,
         };
     }
@@ -87,7 +85,7 @@ pub const Layout = struct {
         self.cache.deinit();
     }
 
-    pub fn getIntersect(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
+    pub fn getIntersect(self: *Layout, region: Rect3(usize), channel: usize) ![]BlockInfo {
         switch (self.typ) {
             LayoutType.RegularNoOverlap => return self.getIntersectRegularNoOverlap(region, channel),
             LayoutType.IrregularNoOverlap => return self.getIntersectIrregularNoOverlap(region, channel),
@@ -96,7 +94,7 @@ pub const Layout = struct {
         }
     }
 
-    fn getIntersectRegularNoOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
+    fn getIntersectRegularNoOverlap(self: *Layout, region: Rect3(usize), channel: usize) ![]BlockInfo {
         var x1 = region.x / self.block.size.width;
         var y1 = region.y / self.block.size.height;
         var z1 = region.z / self.block.size.depth;
@@ -105,16 +103,16 @@ pub const Layout = struct {
         var y2 = @minimum(self.gridsize.height - 1, (region.y + region.height - 1) / self.block.size.height);
         var z2 = @minimum(self.gridsize.depth - 1, (region.z + region.depth - 1) / self.block.size.depth);
 
-        var x: u32 = x1;
-        var y: u32 = y1;
-        var z: u32 = z1;
+        var x: usize = x1;
+        var y: usize = y1;
+        var z: usize = z1;
         while (z <= z2) : (z += 1) {
             while (y <= y2) : (y += 1) {
                 while (x <= x2) : (x += 1) {
-                    var p = Point3(u32).init(x, y, z);
+                    var p = Point3(usize).init(x, y, z);
                     var block = self.toBlock(p, channel);
                     var info = try self.getBlock(block, channel);
-                    try self.cache.append(&info);
+                    try self.cache.append(info);
                 }
             }
         }
@@ -122,7 +120,7 @@ pub const Layout = struct {
         return self.cache.toOwnedSlice();
     }
 
-    fn getIntersectIrregularNoOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
+    fn getIntersectIrregularNoOverlap(self: *Layout, region: Rect3(usize), channel: usize) ![]BlockInfo {
         _ = self;
         _ = region;
         _ = channel;
@@ -130,21 +128,21 @@ pub const Layout = struct {
         return undefined;
     }
 
-    fn getIntersectRegularOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
+    fn getIntersectRegularOverlap(self: *Layout, region: Rect3(usize), channel: usize) ![]BlockInfo {
         _ = self;
         _ = region;
         _ = channel;
         return undefined;
     }
 
-    fn getIntersectIrregularOverlap(self: *Layout, region: Rect3(u32), channel: *u32) ![]*BlockInfo {
+    fn getIntersectIrregularOverlap(self: *Layout, region: Rect3(usize), channel: usize) ![]BlockInfo {
         _ = self;
         _ = region;
         _ = channel;
         return undefined;
     }
 
-    pub fn getBlock(self: *Layout, block: u32, channel: *u32) LayoutError!BlockInfo {
+    pub fn getBlock(self: *Layout, block: usize, channel: usize) LayoutError!BlockInfo {
         switch (self.typ) {
             LayoutType.RegularNoOverlap => return self.getBlockRegularNoOverlap(block, channel),
             LayoutType.IrregularNoOverlap => return self.getBlockIrregularNoOverlap(block, channel),
@@ -153,8 +151,9 @@ pub const Layout = struct {
         }
     }
 
-    fn getBlockRegularNoOverlap(self: *Layout, block: u32, channel: *u32) LayoutError!BlockInfo {
-        var loc = try self.locFromBlockNoOverlap(block, channel);
+    fn getBlockRegularNoOverlap(self: *Layout, block: usize, channel: usize) LayoutError!BlockInfo {
+        var chan = channel;
+        var loc = try self.locFromBlockNoOverlap(block, &chan);
 
         var x = loc.x * self.block.size.width;
         var y = loc.y * self.block.size.height;
@@ -163,52 +162,52 @@ pub const Layout = struct {
         var height = self.block.size.height;
         var depth = self.block.size.depth;
 
-        var rect = Rect3(u32).init(x, y, z, width, height, depth);
+        var rect = Rect3(usize).init(x, y, z, width, height, depth);
 
         return BlockInfo{
             .block = block,
-            .channel = channel.*,
+            .channel = chan,
             .rect = rect,
         };
     }
 
-    fn getBlockIrregularNoOverlap(self: *Layout, block: u32, channel: *u32) LayoutError!BlockInfo {
+    fn getBlockIrregularNoOverlap(self: *Layout, block: usize, channel: usize) LayoutError!BlockInfo {
         // TODO
         _ = self;
         _ = block;
         _ = channel;
         return BlockInfo{
             .block = block,
-            .channel = channel.*,
+            .channel = channel,
             .rect = undefined,
         };
     }
 
-    fn getBlockRegularOverlap(self: *Layout, block: u32, channel: *u32) LayoutError!BlockInfo {
+    fn getBlockRegularOverlap(self: *Layout, block: usize, channel: usize) LayoutError!BlockInfo {
         // TODO
         _ = self;
         _ = block;
         _ = channel;
         return BlockInfo{
             .block = block,
-            .channel = channel.*,
+            .channel = channel,
             .rect = undefined,
         };
     }
 
-    fn getBlockIrregularOverlap(self: *Layout, block: u32, channel: *u32) LayoutError!BlockInfo {
+    fn getBlockIrregularOverlap(self: *Layout, block: usize, channel: usize) LayoutError!BlockInfo {
         // TODO
         _ = self;
         _ = block;
         _ = channel;
         return BlockInfo{
             .block = block,
-            .channel = channel.*,
+            .channel = channel,
             .rect = undefined,
         };
     }
 
-    fn locFromBlockOverlap(self: *Layout, block: u32, channel: *u32) Point3(u32) {
+    fn locFromBlockOverlap(self: *Layout, block: usize, channel: *usize) Point3(usize) {
         var index: usize = 0;
         if (self.contiguous) {
             index = @intCast(usize, block);
@@ -218,17 +217,17 @@ pub const Layout = struct {
             channel.* = self.blocks / self.channels;
         }
 
-        var x = @floatToInt(u32, self.coords.?[index].x);
-        var y = @floatToInt(u32, self.coords.?[index].x);
-        var z = @floatToInt(u32, self.coords.?[index].x);
+        var x = @floatToInt(usize, self.coords.?[index].x);
+        var y = @floatToInt(usize, self.coords.?[index].x);
+        var z = @floatToInt(usize, self.coords.?[index].x);
 
-        return Point3(u32).init(x, y, z);
+        return Point3(usize).init(x, y, z);
     }
 
-    fn locFromBlockNoOverlap(self: *Layout, block: u32, channel: *u32) LayoutError!Point3(u32) {
-        var x: u32 = undefined;
-        var y: u32 = undefined;
-        var z: u32 = undefined;
+    fn locFromBlockNoOverlap(self: *Layout, block: usize, channel: *usize) LayoutError!Point3(usize) {
+        var x: usize = undefined;
+        var y: usize = undefined;
+        var z: usize = undefined;
         std.debug.print("CHANNEL-PRE: {d}\n", .{channel.*});
 
         if (self.contiguous) {
@@ -268,19 +267,19 @@ pub const Layout = struct {
             std.debug.print("CHANNEL: {d}\n", .{channel.*});
         }
 
-        return Point3(u32).init(x, y, z);
+        return Point3(usize).init(x, y, z);
     }
 
-    fn toBlock(self: *Layout, loc: Point3(u32), channel: *u32) u32 {
+    fn toBlock(self: *Layout, loc: Point3(usize), channel: usize) usize {
         // if (self.placement != Placement.NoOverlap) unreachable;
         if (self.contiguous) {
             return loc.x + loc.y * self.gridsize.width + loc.z * self.wh;
         } else {
-            return loc.x + loc.y * self.gridsize.width + channel.* * self.wh + loc.z * self.whc;
+            return loc.x + loc.y * self.gridsize.width + channel * self.wh + loc.z * self.whc;
         }
     }
 
-    fn sizeFromBlock(self: *Layout, block: u32) Size3(u32) {
+    fn sizeFromBlock(self: *Layout, block: usize) Size3(usize) {
         if (self.grid != Grid.Irregular) unreachable;
 
         var index: usize = 0;
@@ -293,7 +292,7 @@ pub const Layout = struct {
         return self.block.sizes[index];
     }
 
-    fn removeRedundancies(self: *Layout, cache: []BlockInfo, overlaps: []const Rect3(u32)) void {
+    fn removeRedundancies(self: *Layout, cache: []BlockInfo, overlaps: []const Rect3(usize)) void {
         // TODO
         _ = cache;
         _ = overlaps;
@@ -306,7 +305,7 @@ test "initRegularNoOverlap" {
     var allocator = gpa.allocator();
     var size = Size3(u32).init(2048, 2048, 3);
     var block_size = Size3(u32).init(512, 512, 3);
-    var channels: u32 = 3;
+    var channels: usize = 3;
     var layout = Layout.initRegularNoOverlap(
         allocator,
         size,
@@ -344,8 +343,8 @@ test "getBlockRegularNoOverlap" {
     );
     defer layout.deinit();
 
-    var channel: u32 = 1;
-    var block = try layout.getBlock(6, &channel);
+    var channel: usize = 1;
+    var block = try layout.getBlock(6, channel);
 
     std.debug.print("{any}\n", .{block});
 }
@@ -363,9 +362,9 @@ test "getIntersectRegularNoOverlap" {
     );
     defer layout.deinit();
 
-    var region = Rect3(u32).init(0, 0, 0, 1024, 1024, 1);
-    var channel: u32 = 1;
-    var range = try layout.getIntersect(region, &channel);
+    var region = Rect3(usize).init(0, 0, 0, 1024, 1024, 1);
+    var channel: usize = 1;
+    var range = try layout.getIntersect(region, channel);
     std.debug.print("{any}\n", .{layout});
     std.debug.print("{any}\n", .{range});
 }
@@ -378,8 +377,8 @@ test "locFromBlockNoOverlap" {
     var layout = Layout.initRegularNoOverlap(allocator, size, block_size, 3);
     defer layout.deinit();
 
-    var block: u32 = 5;
-    var channel: u32 = 2;
+    var block: usize = 5;
+    var channel: usize = 2;
     var loc = try layout.locFromBlockNoOverlap(block, &channel);
 
     std.debug.assert(loc.x == 1);

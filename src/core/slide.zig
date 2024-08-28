@@ -28,8 +28,6 @@ pub const Slide = struct {
     focalPlaneMax: f64,
     pixelsize: @Vector(3, f64),
 
-    layout: Layout,
-
     // TODO
     // SlideCache* cache_;
 
@@ -48,6 +46,11 @@ pub const Slide = struct {
     else
         *const fn (ptr: *anyopaque, info: BlockInfo, dst: Mat) anyerror!void,
 
+    layoutFn: if (builtin.zig_backend == .stage1)
+        fn (ptr: *anyopaque) Layout
+    else
+        *const fn (ptr: *anyopaque) Layout,
+
     pub fn init(
         pointer: anytype,
         imageFormat: ImageFormat,
@@ -61,6 +64,7 @@ pub const Slide = struct {
             info: BlockInfo,
             dst: Mat,
         ) anyerror!void,
+        comptime layoutFn: fn (ptr: @TypeOf(pointer)) Layout,
     ) Slide {
         const Ptr = @TypeOf(pointer);
         std.debug.assert(@typeInfo(Ptr) == .Pointer); // Must be a pointer
@@ -78,12 +82,17 @@ pub const Slide = struct {
                 const self = @ptrCast(Ptr, @alignCast(alignment, ptr));
                 try readBlockFromFileFn(self, info, dst);
             }
+
+            fn layout(ptr: *anyopaque) Layout {
+                const alignment = @typeInfo(Ptr).Pointer.alignment;
+                const self = @ptrCast(Ptr, @alignCast(alignment, ptr));
+                return layoutFn(self);
+            }
         };
 
         return .{
             .imageFormat = imageFormat,
             .typ = undefined,
-            .layout = undefined,
             .objective = undefined,
             .focalPlaneMin = undefined,
             .focalPlaneMax = undefined,
@@ -93,6 +102,7 @@ pub const Slide = struct {
             .ptr = pointer,
             .openFn = gen.open,
             .readBlockFromFileFn = gen.readBlockFromFile,
+            .layoutFn = gen.layout,
         };
     }
 
@@ -101,33 +111,37 @@ pub const Slide = struct {
     }
 
     pub fn readBlockFromFile(self: Slide, info: BlockInfo, dst: Mat) !void {
-        self.readBlockFromFileFn(self.ptr, info, dst);
+        try self.readBlockFromFileFn(self.ptr, info, dst);
     }
 
-    pub fn getRegion(self: Slide, allocator: std.mem.Allocator, region: Rect3(u32), channel: u32, dst: *Mat) !void {
-        var range: []*BlockInfo = self.layout.getIntersect(region, &channel);
+    pub fn layout(self: Slide) Layout {
+        return self.layoutFn(self.ptr);
+    }
+
+    pub fn getRegion(self: Slide, allocator: std.mem.Allocator, region: Rect3(usize), channel: usize, dst: *Mat) !void {
+        var range: []BlockInfo = try self.layout().getIntersect(region, channel);
         if (range.len == 0) return;
 
-        var dim: u2 = 0;
-        var sz = &[_]usize{ 0, 0, 0 };
+        // var dim: u2 = 0;
+        // var sz = &[_]usize{ 0, 0, 0 };
 
-        if (region.depth == 1) {
-            dim = 2;
-            sz[0] = region.height;
-            sz[1] = region.width;
-        } else {
-            dim = 3;
-            sz[0] = region.depth;
-            sz[1] = region.height;
-            sz[2] = region.width;
-        }
+        // if (region.depth == 1) {
+        //     dim = 2;
+        //     sz[0] = region.height;
+        //     sz[1] = region.width;
+        // } else {
+        //     dim = 3;
+        //     sz[0] = region.depth;
+        //     sz[1] = region.height;
+        //     sz[2] = region.width;
+        // }
 
         var typ = if (self.isContiguous()) self.typ else self.depth();
 
         for (range) |info| {
-            var src = Mat.initEmpty(allocator, info.rect.height, info.rect.width, typ);
+            var src = try Mat.initEmpty(allocator, info.rect.height, info.rect.width, typ);
             try self.readBlockFromFile(info, src);
-            try self.copyTo(info.rect, region, src, dst);
+            try Slide.copyTo(allocator, info.rect, region, &src, dst);
         }
     }
 
@@ -137,39 +151,39 @@ pub const Slide = struct {
         return MatType.CV_8SC1;
     }
 
-    pub fn slices(self: Slide) u32 {
-        return self.layout.size.depth;
+    pub fn slices(self: Slide) usize {
+        return self.layout().size.depth;
     }
 
-    pub fn rows(self: Slide) u32 {
-        return self.layout.size.height;
+    pub fn rows(self: Slide) usize {
+        return self.layout().size.height;
     }
 
-    pub fn cols(self: Slide) u32 {
-        return self.layout.size.width;
+    pub fn cols(self: Slide) usize {
+        return self.layout().size.width;
     }
 
     pub fn isContiguous(self: Slide) bool {
-        return self.layout.contiguous;
+        return self.layout().contiguous;
     }
 
-    fn isValidChannelSelection(channel: u32) bool {
+    fn isValidChannelSelection(channel: usize) bool {
         // TODO
         _ = channel;
         return true;
     }
 
     /// copies from src to dst the portion of r1 that overlaps r2.
-    fn copyTo(r1: Rect3(u32), r2: Rect3(u32), src: Mat, dst: Mat) !void {
+    fn copyTo(allocator: std.mem.Allocator, r1: Rect3(usize), r2: Rect3(usize), src: *Mat, dst: *Mat) !void {
         var intersect = r1.intersect(r2) orelse return error.NoIntersection;
 
-        var src_rect = Rect(u32).init(
+        var src_rect = Rect(usize).init(
             intersect.x - r1.x,
             intersect.y - r1.y,
             intersect.width,
             intersect.height,
         );
-        var dst_rect = Rect(u32).init(
+        var dst_rect = Rect(usize).init(
             intersect.x - r2.x,
             intersect.y - r2.y,
             intersect.width,
@@ -178,10 +192,10 @@ pub const Slide = struct {
 
         var src_z0 = intersect.z - r1.z;
         var dst_z0 = intersect.z - r2.z;
-        var height: u32 = undefined;
+        var height: usize = undefined;
         var src_data: [*]u8 = undefined;
         var dst_data: [*]u8 = undefined;
-        var bytes_in_row = intersect.width * @intCast(u32, src.elemSize());
+        var bytes_in_row = intersect.width * src.elemSize();
 
         if (src.dims == 2 and dst.dims == 2) {
             std.debug.assert(intersect.depth == 1);
@@ -195,7 +209,8 @@ pub const Slide = struct {
 
             var src_sub_view: Mat = src.subMat(src_rect);
 
-            var dst_slice = Mat.init(
+            var dst_slice = try Mat.initFull(
+                allocator,
                 dst.size[1],
                 dst.size[2],
                 dst.typ,
@@ -209,7 +224,8 @@ pub const Slide = struct {
         } else if (dst.dims == 2) { // src.dims != 2
             std.debug.assert(intersect.depth == 1);
 
-            var src_slice = Mat.init(
+            var src_slice = try Mat.initFull(
+                allocator,
                 src.size[1],
                 src.size[2],
                 src.typ,
@@ -223,16 +239,18 @@ pub const Slide = struct {
             src_data = src_sub_view.data;
             dst_data = dst_sub_view.data;
         } else { // dst.dims == 3 && src.dims == 3
-            var zz: u32 = 0;
+            var zz: usize = 0;
             while (zz < intersect.depth) : (zz += 1) {
-                var src_slice = Mat.init(
+                var src_slice = try Mat.initFull(
+                    allocator,
                     src.size[1],
                     src.size[2],
                     src.typ,
                     src.data + (src_z0 + zz) * src.step[0],
                     null,
                 );
-                var dst_slice = Mat.init(
+                var dst_slice = try Mat.initFull(
+                    allocator,
                     dst.size[1],
                     dst.size[2],
                     dst.typ,
@@ -248,7 +266,7 @@ pub const Slide = struct {
             }
         }
 
-        var i: u32 = 0;
+        var i: usize = 0;
         while (i < height) : (i += 1) {
             // using @memcpy to keep the same style as C++ here
             // it can be replaced by:

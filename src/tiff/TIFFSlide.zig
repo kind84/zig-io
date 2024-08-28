@@ -1,5 +1,6 @@
 const std = @import("std");
 const BlockInfo = @import("../core/layout.zig").BlockInfo;
+const Layout = @import("../core/layout.zig").Layout;
 const Mat = @import("../core/mat.zig").Mat;
 const Slide = @import("../core/slide.zig").Slide;
 const ImageFormat = @import("../core/slide.zig").ImageFormat;
@@ -14,6 +15,7 @@ pub const TIFFSlide = @This();
 imageFormat: ImageFormat,
 metadata: []TIFFMetadata,
 blockInfos: []TIFFBlockInfo,
+slideLayout: Layout,
 
 /// file descriptor for write instructions (we use the low level system call
 /// 'open', like LibTIFF does)
@@ -27,6 +29,7 @@ reader: TIFFEncodedReader,
 
 pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
     var tiff_slide = TIFFSlide{
+        .slideLayout = undefined,
         .imageFormat = undefined,
         .metadata = undefined,
         .in = undefined,
@@ -43,13 +46,17 @@ pub fn init(path: []const u8, allocator: std.mem.Allocator) !TIFFSlide {
 }
 
 pub fn deinit(self: *TIFFSlide) void {
-    for (self.metadata) |m| {
-        _ = c.TIFFClose(m.tif);
+    for (self.metadata) |*m| {
+        m.*.deinit();
     }
 }
 
 pub fn slide(self: *TIFFSlide) Slide {
-    return Slide.init(self, self.imageFormat, open, readBlockFromFile);
+    return Slide.init(self, self.imageFormat, open, readBlockFromFile, layout);
+}
+
+pub fn layout(self: *TIFFSlide) Layout {
+    return self.slideLayout;
 }
 
 pub fn open(self: *TIFFSlide, path: []const u8, allocator: std.mem.Allocator) !void {
@@ -108,13 +115,16 @@ fn openFromSingleFile(
     self.metadata = &[_]TIFFMetadata{m};
     self.imageFormat = m.imageFormat;
 
+    var lout: Layout = undefined;
     // TODO: define the layout
     if (m.imageFormat == ImageFormat.DP200) {
         // Ventana DP200 with overlaps
     } else {
         // regular grid layout
+        lout = Layout.initRegularNoOverlap(allocator, m.size, m.blocksize, m.typ.?.channels());
     }
 
+    self.slideLayout = lout;
     self.blockInfos = try m.addBlock();
 }
 
