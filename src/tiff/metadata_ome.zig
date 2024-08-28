@@ -372,9 +372,9 @@ pub fn init(
 pub fn addBlock(self: OMETIFFMetadata) ![]TIFFBlockInfo {
     var m = self.metadata;
     var nbz: u32 = m.size.depth / m.blocksize.depth;
-    // TODO
+    // TODO: FIXME
     // var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else CV_MAT_CN(m.typ);
-    var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else 0;
+    var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else 1;
     var nbb: u32 = ((1 + ((m.size.width - 1) / m.blocksize.width)) *
         (1 + ((m.size.height - 1) / m.blocksize.height)));
 
