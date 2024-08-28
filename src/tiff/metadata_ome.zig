@@ -5,7 +5,7 @@ const TIFFMetadata = @import("metadata.zig");
 const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
 const Channel = @import("../core/Channel.zig");
 const Size3 = @import("../core/size.zig").Size3;
-const ImageFormat = @import("../core/Slide.zig").ImageFormat;
+const ImageFormat = @import("../core/slide.zig").ImageFormat;
 const c = @import("metadata.zig").C;
 
 pub const OMETIFFMetadata = @This();
@@ -13,7 +13,6 @@ pub const OMETIFFMetadata = @This();
 channels: u16,
 slices: u16,
 plane_map: [][]usize,
-metadata: *TIFFMetadata,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -287,6 +286,8 @@ pub fn init(
         return null;
     }
 
+    // TODO: compute CV type
+
     metadata.size = ifd0.size;
     metadata.size.depth = size_Z;
     metadata.blocksize = ifd0.blocksize;
@@ -345,7 +346,6 @@ pub fn init(
         .channels = size_C,
         .slices = size_Z,
         .plane_map = plane_outer,
-        .metadata = metadata,
     };
 }
 
