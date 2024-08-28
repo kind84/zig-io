@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Channel = @import("./Channel.zig");
+const Rect3 = @import("rect.zig").Rect3;
 // const Metadata = @import("./metadata.zig").Metadata;
 const TIFFSlide = @import("../tiff/TIFFSlide.zig");
 const TIFFMetadata = @import("../tiff/metadata.zig").TIFFMetadata;
@@ -75,6 +76,28 @@ pub const Slide = struct {
         self.openFn(self.ptr, path, allocator);
     }
 
+    pub fn getRegion(self: Slide, region: Rect3(u32), channel: u32, dst: []u8) !void {
+        // TODO
+        _ = self;
+        _ = region;
+        _ = channel;
+        _ = dst;
+
+        var dim: u2 = 0;
+        var sz = &[_]usize{ 0, 0, 0 };
+
+        if (region.depth == 1) {
+            dim = 2;
+            sz[0] = region.height;
+            sz[1] = region.width;
+        } else {
+            dim = 3;
+            sz[0] = region.depth;
+            sz[1] = region.height;
+            sz[2] = region.width;
+        }
+    }
+
     pub fn depth(self: Slide) i32 {
         _ = self;
         // TODO
@@ -108,6 +131,23 @@ pub const Slide = struct {
         // TODO
         // self.layout.isContiguous();
         return false;
+    }
+
+    fn isValidChannelSelection(channel: u32) bool {
+        // TODO
+        _ = channel;
+        return true;
+    }
+
+    fn copyTo(self: Slide, r1: Rect3(u32), r2: Rect3(u32), src: []u8, dst: []u8) !void {
+        var intersect = r1.intersect(r2) orelse return error.NoIntersection;
+
+        _ = intersect;
+        _ = self;
+        _ = r1;
+        _ = r2;
+        _ = src;
+        _ = dst;
     }
 };
 
