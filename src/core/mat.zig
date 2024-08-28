@@ -2,16 +2,16 @@ const std = @import("std");
 const Rect = @import("rect.zig").Rect;
 const Size3 = @import("size.zig").Size3;
 
+const auto_step: usize = 0;
+
 pub const Mat = struct {
     typ: MatType,
-    data: [*]const u8,
+    data: [*]u8,
     dims: u8,
     rows: u32,
     cols: u32,
-    size: []u32,
-    step: []usize,
-
-    const auto_step: usize = 0;
+    // size: MatSize, TODO
+    step: [2]usize,
 
     // TODO switch to dims & size args
     // modules/core/src/matrix.cpp L371
@@ -22,21 +22,17 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
-            .size = &[_]u32{rows},
-            .step = &[_]usize{},
+            .step = [2]usize{},
         };
     }
 
     // modules/core/src/matrix.cpp L419
-    pub fn initFull(rows: u32, cols: u32, typ: MatType, data: [*]const u8, step: ?usize) !Mat {
-        var stp = step orelse auto_step;
+    pub fn initFull(rows: u32, cols: u32, typ: MatType, data: [*]u8, step: ?usize) !Mat {
+        const esz: usize = typ.elemSize();
+        const min_step: usize = @as(usize, cols) * esz;
+        var stp: usize = step orelse min_step;
 
-        var esz = typ.elemSize();
-        var min_step = cols * @intCast(u32, esz);
-
-        if (stp == auto_step) {
-            stp = min_step;
-        } else {
+        if (stp != min_step) {
             std.debug.assert(stp >= min_step);
             if (stp % typ.size() != 0) {
                 return error.BadStep;
@@ -49,8 +45,7 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
-            .size = &[_]u32{rows},
-            .step = &[_]usize{ stp, esz },
+            .step = [2]usize{ stp, esz },
         };
     }
 
@@ -68,8 +63,7 @@ pub const Mat = struct {
             .dims = self.dims,
             .rows = roi.height,
             .cols = roi.width,
-            .size = &[_]u32{roi.height},
-            .step = &[_]usize{ self.step[0], esz },
+            .step = [2]usize{ self.step[0], esz },
         };
     }
 
@@ -143,6 +137,23 @@ pub const MatType = enum(u8) {
         return self.size() * chans;
     }
 };
+
+test "initFull" {
+    var data = [_]u8{
+        1, 1, 1, 1,
+        2, 2, 2, 2,
+        3, 3, 3, 3,
+        4, 4, 4, 4,
+    };
+    var mat = try Mat.initFull(4, 4, MatType.CV_8UC1, &data, null);
+
+    try std.testing.expectEqual(MatType.CV_8UC1, mat.typ);
+    try std.testing.expect(&data == mat.data);
+    try std.testing.expectEqual(@as(u32, 4), mat.rows);
+    try std.testing.expectEqual(@as(u32, 4), mat.cols);
+    try std.testing.expectEqual(@as(u32, 2), mat.dims);
+    try std.testing.expect(std.mem.eql(usize, &[2]usize{ 4, 1 }, &mat.step));
+}
 
 test "subMat" {
     var data = [_]u8{
