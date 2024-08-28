@@ -5,6 +5,7 @@ const OMETIFFMetadata = @import("metadata_ome.zig");
 const GenericTIFFMetadata = @import("metadata_generic.zig");
 const Channel = @import("../core/Channel.zig");
 const ImageFormat = @import("../core/slide.zig").ImageFormat;
+const MatType = @import("../core/mat.zig").MatType;
 const Size3 = @import("../core/size.zig").Size3;
 const c = @cImport({
     @cInclude("tiffio.h");
@@ -17,6 +18,13 @@ const MetadataType = union(enum) {
     OME: OMETIFFMetadata,
     Generic: GenericTIFFMetadata,
 
+    fn deinit(self: MetadataType) void {
+        return switch (self) {
+            .OME => |m| m.deinit(),
+            .Generic => |m| m.deinit(),
+        };
+    }
+
     fn addBlock(self: MetadataType) anyerror![]TIFFBlockInfo {
         return switch (self) {
             .OME => |m| m.addBlock(),
@@ -28,7 +36,7 @@ const MetadataType = union(enum) {
 pub const TIFFMetadata = @This();
 
 tif: *c.TIFF,
-typ: i32,
+typ: ?MatType,
 size: Size3(u32),
 blocksize: Size3(u32),
 planarConfig: u16,
@@ -38,10 +46,10 @@ channelsList: []Channel,
 imageFormat: ImageFormat,
 metadataType: MetadataType,
 
-pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
+pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
     var self = TIFFMetadata{
         .tif = undefined,
-        .typ = -1,
+        .typ = null,
         .size = undefined,
         .blocksize = undefined,
         .planarConfig = 0,
@@ -97,6 +105,42 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
     return self;
 }
 
+pub fn deinit(self: *TIFFMetadata) void {
+    self.metadataType.deinit();
+}
+
 pub fn addBlock(self: TIFFMetadata) ![]TIFFBlockInfo {
     return self.metadataType.addBlock();
+}
+
+test "init" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+
+    const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
+    var meta = try init(allocator, path);
+    defer meta.deinit();
+
+    std.debug.print("{any}\n", .{meta});
+    try std.testing.expectEqual(ImageFormat.OME, meta.imageFormat);
+}
+
+test "addBlock OME" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    defer {
+        const leaked = gpa.deinit();
+        if (leaked) std.testing.expect(false) catch @panic("TEST FAIL"); //fail test; can't try in defer as defer is executed after we return
+    }
+
+    const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
+    var meta = try init(allocator, path);
+    defer meta.deinit();
+
+    const infos = try meta.addBlock();
+    std.debug.print("{any}\n", .{infos});
 }

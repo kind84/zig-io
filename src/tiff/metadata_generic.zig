@@ -17,6 +17,10 @@ pub fn init(
     return GenericTIFFMetadata{};
 }
 
+pub fn deinit(self: GenericTIFFMetadata) void {
+    _ = self;
+}
+
 pub fn addBlock(self: GenericTIFFMetadata) ![]TIFFBlockInfo {
     _ = self;
     std.debug.print("Yay Generic TIFF!\n", .{});
