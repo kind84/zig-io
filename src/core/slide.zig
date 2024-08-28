@@ -106,7 +106,7 @@ pub const Slide = struct {
 
     pub fn getRegion(self: Slide, region: Rect3(u32), channel: u32, dst: *Mat) !void {
         var range: []*BlockInfo = self.layout.getIntersect(region, &channel);
-        if (std.meta.eql(range.begin, range.end)) return;
+        if (range.len == 0) return;
 
         var dim: u2 = 0;
         var sz = &[_]usize{ 0, 0, 0 };
@@ -159,6 +159,7 @@ pub const Slide = struct {
         return true;
     }
 
+    /// copies from src to dst the portion of r1 that overlaps r2.
     fn copyTo(r1: Rect3(u32), r2: Rect3(u32), src: Mat, dst: Mat) !void {
         var intersect = r1.intersect(r2) orelse return error.NoIntersection;
 

@@ -5,6 +5,7 @@ const Size3 = @import("size.zig").Size3;
 const auto_step: usize = 0;
 
 pub const Mat = struct {
+    allocator: std.mem.Allocator,
     typ: MatType,
     data: [*]u8,
     dims: u8,
@@ -15,10 +16,14 @@ pub const Mat = struct {
 
     // TODO switch to dims & size args
     // modules/core/src/matrix.cpp L371
-    pub fn initEmpty(rows: u32, cols: u32, typ: MatType) !Mat {
+    pub fn initEmpty(allocator: std.mem.Allocator, rows: u32, cols: u32, typ: MatType) !Mat {
+        const esz: usize = typ.elemSize();
+        const data_size = @as(usize, rows) * @as(usize, cols) * esz;
+        var data = try allocator.alloc(u8, data_size);
         return Mat{
+            .allocator = allocator,
             .typ = typ,
-            .data = undefined,
+            .data = data.ptr,
             .dims = 2,
             .rows = rows,
             .cols = cols,
@@ -47,6 +52,10 @@ pub const Mat = struct {
             .cols = cols,
             .step = [2]usize{ stp, esz },
         };
+    }
+
+    pub fn deinit(self: Mat) void {
+        self.allocator.free(self.data);
     }
 
     /// returns a new Mat of the provided roi. The underlying data is not
@@ -132,8 +141,12 @@ pub const MatType = enum(u8) {
         }
     }
 
+    pub fn channels(self: MatType) usize {
+        return std.fmt.parseInt(usize, &[_]u8{@tagName(self)[@tagName(self).len - 1]}, 10) catch 0;
+    }
+
     pub fn elemSize(self: MatType) usize {
-        var chans = std.fmt.parseInt(usize, &[_]u8{@tagName(self)[@tagName(self).len - 1]}, 10) catch 0;
+        var chans = self.channels();
         return self.size() * chans;
     }
 };
