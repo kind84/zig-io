@@ -1,5 +1,6 @@
 const std = @import("std");
 const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
+const TIFFBlockInfo = @import("utils.zig").TIFFBlockInfo;
 const OMETIFFMetadata = @import("metadata_ome.zig");
 const GenericTIFFMetadata = @import("metadata_generic.zig");
 const Channel = @import("../core/Channel.zig");
@@ -16,10 +17,10 @@ const MetadataType = union(enum) {
     OME: OMETIFFMetadata,
     Generic: GenericTIFFMetadata,
 
-    fn addBlock(self: MetadataType, tif: *c.TIFF) !void {
+    fn addBlock(self: MetadataType) anyerror![]TIFFBlockInfo {
         return switch (self) {
-            .OME => |m| m.addBlock(tif),
-            .Generic => |m| m.addBlock(tif),
+            .OME => |m| m.addBlock(),
+            .Generic => |m| m.addBlock(),
         };
     }
 };
@@ -97,6 +98,6 @@ pub fn provide(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
     return self;
 }
 
-pub fn addBlock(self: TIFFMetadata) !void {
-    return self.metadataType.addBlock(self.tif);
+pub fn addBlock(self: TIFFMetadata) ![]TIFFBlockInfo {
+    return self.metadataType.addBlock();
 }

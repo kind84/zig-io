@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const xml = @import("../xml.zig");
 const TIFFMetadata = @import("metadata.zig");
 const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
+const TIFFBlockInfo = @import("utils.zig").TIFFBlockInfo;
 const Channel = @import("../core/Channel.zig");
 const Size3 = @import("../core/size.zig").Size3;
 const ImageFormat = @import("../core/slide.zig").ImageFormat;
@@ -10,9 +11,11 @@ const c = @import("metadata.zig").C;
 
 pub const OMETIFFMetadata = @This();
 
+allocator: std.mem.Allocator,
 channels: u16,
 slices: u16,
 plane_map: [][]usize,
+metadata: *TIFFMetadata,
 
 pub fn init(
     allocator: std.mem.Allocator,
@@ -94,6 +97,7 @@ pub fn init(
     var physical_size_Z_string: []const u8 = pixels.getAttribute("PhysicalSizeZ") orelse "";
     var physical_size_Z: f32 = std.fmt.parseFloat(f32, physical_size_Z_string) catch 0;
     var unit_Z: []const u8 = pixels.getAttribute("PhysicalSizeZUnit") orelse "";
+    var dimension_order: []const u8 = pixels.getAttribute("DimensionOrder") orelse "";
 
     if (size_T != 1) {
         std.debug.print("Unsupported multiple Timepoints in OME-tiff\n", .{});
@@ -264,19 +268,33 @@ pub fn init(
     }
 
     // try to handle invalid ome-tiffs with no TiffData info in XML
-    // by assuming the obvious order
+    // by using the dimensionOrder specifief in the XML
     // requires  samplesPerPixel = 1
     if (valid_IFDs == 0 and n_IFDs == size_C_planes * size_Z) {
         valid_IFDs = n_IFDs;
 
         var valid_ifd: u16 = 0;
-        var zz: u16 = 0;
-        while (zz < size_Z) : (zz += 1) {
+        if (std.mem.eql(u8, dimension_order, "XYZCT")) {
             var cc: u16 = 0;
             while (cc < size_C_planes) : (cc += 1) {
-                plane_outer[zz][cc] = full_resolution_dirs.items[valid_ifd];
-                valid_ifd += 1;
+                var zz: u16 = 0;
+                while (zz < size_Z) : (zz += 1) {
+                    plane_outer[zz][cc] = full_resolution_dirs.items[valid_ifd];
+                    valid_ifd += 1;
+                }
             }
+        } else if (std.mem.eql(u8, dimension_order, "XYCZT")) {
+            var zz: u16 = 0;
+            while (zz < size_Z) : (zz += 1) {
+                var cc: u16 = 0;
+                while (cc < size_C_planes) : (cc += 1) {
+                    plane_outer[zz][cc] = full_resolution_dirs.items[valid_ifd];
+                    valid_ifd += 1;
+                }
+            }
+        } else {
+            std.debug.print("Unsupported DimensionOrder in OME-XML!\n", .{});
+            return null;
         }
     }
 
@@ -343,14 +361,43 @@ pub fn init(
     metadata.imageFormat = ImageFormat.OME;
 
     return OMETIFFMetadata{
+        .allocator = allocator,
         .channels = size_C,
         .slices = size_Z,
         .plane_map = plane_outer,
+        .metadata = metadata,
     };
 }
 
-pub fn addBlock(self: OMETIFFMetadata, tif: *c.TIFF) !void {
-    _ = self;
-    _ = tif;
+pub fn addBlock(self: OMETIFFMetadata) ![]TIFFBlockInfo {
+    var m = self.metadata;
+    var nbz: u32 = m.size.depth / m.blocksize.depth;
+    // TODO
+    // var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else CV_MAT_CN(m.typ);
+    var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else 0;
+    var nbb: u32 = ((1 + ((m.size.width - 1) / m.blocksize.width)) *
+        (1 + ((m.size.height - 1) / m.blocksize.height)));
+
+    var block_infos = std.ArrayList(TIFFBlockInfo).init(self.allocator);
+    var block: u32 = 0;
+    var zz: usize = 0;
+    while (zz < nbz) : (zz += 1) {
+        var cc: usize = 0;
+        while (cc < nbc) : (cc += 1) {
+            var bb: usize = 0;
+            while (bb < nbb) : (bb += 1) {
+                var info = TIFFBlockInfo{
+                    .tif = self.metadata.tif,
+                    .dir = self.plane_map[zz][cc],
+                    .block = block,
+                };
+
+                try block_infos.append(info);
+                block += 1;
+            }
+        }
+    }
+
     std.debug.print("Yay OMETIFF!\n", .{});
+    return block_infos.toOwnedSlice();
 }

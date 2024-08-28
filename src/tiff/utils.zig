@@ -8,8 +8,8 @@ const c = @import("metadata.zig").C;
 
 pub const TIFFBlockInfo = struct {
     tif: *c.TIFF,
-    dir: i32,
-    block: i32,
+    dir: usize,
+    block: u32,
 };
 
 pub const TIFFDirectoryData = struct {
