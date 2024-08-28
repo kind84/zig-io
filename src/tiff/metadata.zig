@@ -25,16 +25,17 @@ const MetadataType = union(enum) {
         };
     }
 
-    fn addBlock(self: MetadataType) anyerror![]TIFFBlockInfo {
+    fn addBlock(self: MetadataType, allocator: std.mem.Allocator) anyerror![]TIFFBlockInfo {
         return switch (self) {
-            .OME => |m| m.addBlock(),
-            .Generic => |m| m.addBlock(),
+            .OME => |m| m.addBlock(allocator),
+            .Generic => |m| m.addBlock(allocator),
         };
     }
 };
 
 pub const TIFFMetadata = @This();
 
+allocator: std.mem.Allocator,
 tif: *c.TIFF,
 typ: ?MatType,
 size: Size3(u32),
@@ -48,6 +49,7 @@ metadataType: MetadataType,
 
 pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
     var self = TIFFMetadata{
+        .allocator = allocator,
         .tif = undefined,
         .typ = null,
         .size = undefined,
@@ -110,7 +112,7 @@ pub fn deinit(self: *TIFFMetadata) void {
 }
 
 pub fn addBlock(self: TIFFMetadata) ![]TIFFBlockInfo {
-    return self.metadataType.addBlock();
+    return self.metadataType.addBlock(self.allocator);
 }
 
 test "init" {
@@ -125,7 +127,6 @@ test "init" {
     var meta = try init(allocator, path);
     defer meta.deinit();
 
-    std.debug.print("{any}\n", .{meta});
     try std.testing.expectEqual(ImageFormat.OME, meta.imageFormat);
 }
 
@@ -142,5 +143,6 @@ test "addBlock OME" {
     defer meta.deinit();
 
     const infos = try meta.addBlock();
-    std.debug.print("{any}\n", .{infos});
+    _ = infos;
+    // std.debug.print("{any}\n", .{infos});
 }

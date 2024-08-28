@@ -2,8 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 const xml = @import("../xml.zig");
 const TIFFMetadata = @import("metadata.zig");
-const TIFFDirectoryData = @import("utils.zig").TIFFDirectoryData;
-const TIFFBlockInfo = @import("utils.zig").TIFFBlockInfo;
+const utils = @import("utils.zig");
+const TIFFDirectoryData = utils.TIFFDirectoryData;
+const TIFFBlockInfo = utils.TIFFBlockInfo;
 const Channel = @import("../core/Channel.zig");
 const Size3 = @import("../core/size.zig").Size3;
 const ImageFormat = @import("../core/slide.zig").ImageFormat;
@@ -309,13 +310,20 @@ pub fn init(
         }
     }
 
+    // check all planes are in map
     if (n_IFDs != valid_IFDs) {
         std.debug.print("Unsupported XML values in OME-tiff\n", .{});
         std.debug.print("Found {d} planes in OME-XML! Expected {d}\n", .{ valid_IFDs, n_IFDs });
         return null;
     }
 
-    // TODO: compute CV type
+    metadata.typ = try utils.computeMatType(
+        ifd0.format,
+        ifd0.photometric,
+        ifd0.nbits,
+        ifd0.n_samples,
+        size_C_planes,
+    );
 
     metadata.size = ifd0.size;
     metadata.size.depth = size_Z;
@@ -385,17 +393,21 @@ pub fn deinit(self: OMETIFFMetadata) void {
     self.arena.deinit();
 }
 
-pub fn addBlock(self: OMETIFFMetadata) ![]TIFFBlockInfo {
+pub fn addBlock(self: OMETIFFMetadata, allocator: std.mem.Allocator) ![]TIFFBlockInfo {
     var m = self.metadata;
+
     var nbz: u32 = m.size.depth / m.blocksize.depth;
-    // TODO: FIXME
-    // var nbc: u32 = if (m.planarConfig == c.PLANARCONFIG_CONTIG) 1 else CV_MAT_CN(m.typ);
-    var nbc: usize = if (m.planarConfig == @intCast(u16, c.PLANARCONFIG_CONTIG)) 1 else m.typ.?.channels();
+    var nbc: usize = 0;
+    if (m.planarConfig == @intCast(u16, c.PLANARCONFIG_CONTIG)) {
+        nbc = 1;
+    } else if (m.typ) |typ| {
+        nbc = typ.channels();
+    }
     var nbb: u32 = ((1 + ((m.size.width - 1) / m.blocksize.width)) *
         (1 + ((m.size.height - 1) / m.blocksize.height)));
 
     std.debug.print("{d}\n", .{@as(usize, nbb * nbc * nbz)});
-    var block_infos = try std.ArrayList(TIFFBlockInfo).initCapacity(self.allocator, @as(usize, nbb * nbc * nbz));
+    var block_infos = try std.ArrayList(TIFFBlockInfo).initCapacity(allocator, @as(usize, nbb * nbc * nbz));
     var block: u32 = 0;
     var zz: usize = 0;
     while (zz < nbz) : (zz += 1) {
