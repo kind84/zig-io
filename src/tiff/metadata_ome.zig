@@ -22,7 +22,7 @@ metadata: *TIFFMetadata,
 pub fn init(
     alloc: std.mem.Allocator,
     metadata: *TIFFMetadata,
-    dirs: []TIFFDirectoryData,
+    dirs: []const TIFFDirectoryData,
 ) !?OMETIFFMetadata {
     defer {
         for (dirs) |dir| {
@@ -434,10 +434,20 @@ pub fn addBlock(self: OMETIFFMetadata, allocator: std.mem.Allocator) ![]TIFFBloc
 
 test "init" {
     const allocator = std.testing.allocator;
-
     const path = "/home/paolo/src/keeneye/zig-io/testdata/AlaskaLynx_ROW9337883641_1024x1024.ome.tiff";
-    var meta = try init(allocator, path);
+    const tiff = c.TIFFOpen(path.ptr, "r8") orelse unreachable;
+    defer {
+        _ = c.TIFFClose(tiff);
+    }
+    const tdd = try TIFFDirectoryData.init(allocator, tiff);
+    defer tdd.deinit();
+    const tdds = &[_]TIFFDirectoryData{tdd};
+    var idx: usize = 0;
+    idx += 1;
+
+    var tiff_meta: TIFFMetadata = undefined;
+    var meta = try init(allocator, &tiff_meta, tdds[0..idx]) orelse unreachable;
     defer meta.deinit();
 
-    try std.testing.expectEqual(ImageFormat.OME, meta.imageFormat);
+    try std.testing.expectEqual(ImageFormat.OME, tiff_meta.imageFormat);
 }

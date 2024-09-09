@@ -184,12 +184,12 @@ test "initFull" {
         3, 3, 3, 3,
         4, 4, 4, 4,
     };
-    std.mem.copy(u8, data, data_slice);
-    var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data.ptr, null);
+    @memcpy(data, data_slice);
+    var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data, null);
     defer mat.deinit();
 
     try std.testing.expectEqual(MatType.CV_8UC1, mat.typ);
-    try std.testing.expect(data.ptr == mat.data);
+    try std.testing.expect(std.mem.eql(u8, data, mat.data) == true);
     try std.testing.expectEqual(@as(usize, 4), mat.rows);
     try std.testing.expectEqual(@as(usize, 4), mat.cols);
     try std.testing.expectEqual(@as(usize, 2), mat.dims);
@@ -205,8 +205,8 @@ test "subMat" {
         3, 3, 3, 3,
         4, 4, 4, 4,
     };
-    std.mem.copy(u8, data, data_slice);
-    var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data.ptr, null);
+    @memcpy(data, data_slice);
+    var mat = try Mat.initFull(allocator, 4, 4, MatType.CV_8UC1, data, null);
     defer mat.deinit();
 
     const rect = Rect(usize).init(0, 1, 2, 2);
@@ -215,7 +215,7 @@ test "subMat" {
     try std.testing.expectEqual(rect.height, sub.rows);
     try std.testing.expectEqual(rect.width, sub.cols);
     try std.testing.expectEqual(MatType.CV_8UC1, sub.typ);
-    try std.testing.expectEqual(mat.data + 4, sub.data);
+    try std.testing.expectEqual(mat.data.ptr + 4, sub.data.ptr);
 }
 
 test "size" {
