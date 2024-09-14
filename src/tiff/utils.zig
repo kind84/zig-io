@@ -118,9 +118,12 @@ pub const TIFFDirectoryData = struct {
             // if kept on the stack, the description gets jammed once the
             // directory data gets moved into the heap in the tiff metadata
             // array.
-            const heap_description = try allocator.alloc(u8, description.len);
-            @memcpy(heap_description, description);
-            tdd.description = heap_description;
+            // const heap_description = try allocator.alloc(u8, description.len);
+            // @memcpy(heap_description, description);
+            // tdd.description = heap_description;
+            // tdd.description = description;
+            tdd.description = try allocator.alloc(u8, description.len);
+            @memcpy(tdd.description, description);
         }
 
         return tdd;

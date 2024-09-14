@@ -13,7 +13,7 @@ pub const Mat = struct {
     dims: u8,
     rows: usize,
     cols: usize,
-    size: []const usize,
+    sizes: []const usize,
     step: [2]usize,
 
     // TODO switch to dims & size args
@@ -30,7 +30,7 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
-            .size = &[1]usize{rows},
+            .sizes = &[1]usize{rows},
             .step = [2]usize{ 0, 0 },
         };
     }
@@ -55,7 +55,7 @@ pub const Mat = struct {
             .dims = 2,
             .rows = rows,
             .cols = cols,
-            .size = &[1]usize{rows},
+            .sizes = &[1]usize{rows},
             .step = [2]usize{ stp, esz },
         };
     }
@@ -82,7 +82,7 @@ pub const Mat = struct {
             .dims = self.dims,
             .rows = roi.height,
             .cols = roi.width,
-            .size = &[1]usize{roi.height},
+            .sizes = &[1]usize{roi.height},
             .step = [2]usize{ self.step[0], esz },
         };
     }

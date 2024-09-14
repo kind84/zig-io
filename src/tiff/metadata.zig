@@ -69,6 +69,7 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         const size_dirs: usize = @intCast(n_dirs);
         std.debug.print("found {d} IFDs in tiff file\n", .{size_dirs});
         var dirs_array = try std.ArrayList(TIFFDirectoryData).initCapacity(allocator, size_dirs);
+        defer dirs_array.deinit();
 
         var dir_no: usize = 0;
         while (true) : (dir_no += 1) {
@@ -81,7 +82,7 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
         // reset directory index
         _ = c.TIFFSetDirectory(tiff, 0);
 
-        const dirs = try dirs_array.toOwnedSlice();
+        const dirs = dirs_array.items;
 
         const metadata: MetadataType = blk: {
             // try OME
@@ -99,6 +100,10 @@ pub fn init(allocator: std.mem.Allocator, path: []const u8) !TIFFMetadata {
             // break :blk undefined;
             return error.NotATIFFSlide;
         };
+
+        for (dirs) |dir| {
+            defer dir.deinit();
+        }
 
         self.metadataType = metadata;
         self.tif = tiff;

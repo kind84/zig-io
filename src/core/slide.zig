@@ -67,9 +67,9 @@ pub const Slide = struct {
         comptime layoutFn: fn (ptr: @TypeOf(pointer)) *Layout,
     ) Slide {
         const Ptr = @TypeOf(pointer);
-        std.debug.assert(@typeInfo(Ptr) == .Pointer); // Must be a pointer
-        std.debug.assert(@typeInfo(Ptr).Pointer.size == .One); // Must be a single-item pointer
-        std.debug.assert(@typeInfo(@typeInfo(Ptr).Pointer.child) == .Struct); // Must point to a struct
+        std.debug.assert(@typeInfo(Ptr) == .pointer); // Must be a pointer
+        std.debug.assert(@typeInfo(Ptr).pointer.size == .One); // Must be a single-item pointer
+        std.debug.assert(@typeInfo(@typeInfo(Ptr).pointer.child) == .@"struct"); // Must point to a struct
         const gen = struct {
             fn open(ptr: *anyopaque, path: []const u8, allocator: std.mem.Allocator) !void {
                 const self: Ptr = @ptrCast(@alignCast(ptr));
@@ -210,8 +210,8 @@ pub const Slide = struct {
             mat_data.ptr = dst.data.ptr + dst_z0 * dst.step[0];
             var dst_slice = try Mat.initFull(
                 allocator,
-                dst.size[1],
-                dst.size[2],
+                dst.sizes[1],
+                dst.sizes[2],
                 dst.typ,
                 mat_data,
                 null,
@@ -227,8 +227,8 @@ pub const Slide = struct {
             mat_data.ptr = src.data.ptr + src_z0 * src.step[0];
             var src_slice = try Mat.initFull(
                 allocator,
-                src.size[1],
-                src.size[2],
+                src.sizes[1],
+                src.sizes[2],
                 src.typ,
                 mat_data,
                 null,
@@ -248,16 +248,16 @@ pub const Slide = struct {
             while (zz < intersect.depth) : (zz += 1) {
                 var src_slice = try Mat.initFull(
                     allocator,
-                    src.size[1],
-                    src.size[2],
+                    src.sizes[1],
+                    src.sizes[2],
                     src.typ,
                     mat_src_data,
                     null,
                 );
                 var dst_slice = try Mat.initFull(
                     allocator,
-                    dst.size[1],
-                    dst.size[2],
+                    dst.sizes[1],
+                    dst.sizes[2],
                     dst.typ,
                     mat_dst_data,
                     null,

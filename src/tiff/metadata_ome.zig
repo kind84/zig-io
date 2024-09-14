@@ -22,14 +22,8 @@ metadata: *TIFFMetadata,
 pub fn init(
     alloc: std.mem.Allocator,
     metadata: *TIFFMetadata,
-    dirs: []const TIFFDirectoryData,
+    dirs: []TIFFDirectoryData,
 ) !?OMETIFFMetadata {
-    defer {
-        for (dirs) |dir| {
-            dir.deinit();
-        }
-        alloc.free(dirs);
-    }
     if (dirs.len == 0) return null;
 
     var arena = std.heap.ArenaAllocator.init(alloc);
@@ -439,14 +433,12 @@ test "init" {
     defer {
         _ = c.TIFFClose(tiff);
     }
-    const tdd = try TIFFDirectoryData.init(allocator, tiff);
+    var tdd = try TIFFDirectoryData.init(allocator, tiff);
     defer tdd.deinit();
-    const tdds = &[_]TIFFDirectoryData{tdd};
-    var idx: usize = 0;
-    idx += 1;
+    var tdds = [_]TIFFDirectoryData{tdd};
 
     var tiff_meta: TIFFMetadata = undefined;
-    var meta = try init(allocator, &tiff_meta, tdds[0..idx]) orelse unreachable;
+    var meta = try init(allocator, &tiff_meta, &tdds) orelse unreachable;
     defer meta.deinit();
 
     try std.testing.expectEqual(ImageFormat.OME, tiff_meta.imageFormat);
